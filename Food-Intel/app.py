@@ -15,19 +15,35 @@ from datetime import datetime
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
 
-# --- CUSTOM CSS (CIA INTEL / GLASSMORPHIC THEME) ---
+# --- CUSTOM CSS (CLASSY, MINIMALIST TERMINAL THEME) ---
 st.markdown("""
 <style>
+    /* Sleek Metric Cards - No borders, just frosted glass */
     div[data-testid="stMetric"] {
-        background-color: rgba(18, 22, 29, 0.7);
-        border: 1px solid rgba(0, 229, 255, 0.15);
-        border-radius: 6px;
+        background-color: rgba(18, 22, 29, 0.85);
+        border-left: 3px solid #00E5FF;
+        border-radius: 2px;
         padding: 15px;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.4);
     }
-    h1, h2, h3 { font-weight: 300 !important; letter-spacing: 0.5px; }
-    .streamlit-expanderHeader { background-color: rgba(18, 22, 29, 0.5) !important; border-radius: 4px; }
+    /* Clean Typography */
+    h1, h2, h3 { 
+        font-weight: 300 !important; 
+        letter-spacing: 1px; 
+        text-transform: uppercase;
+        font-family: 'Courier New', Courier, monospace;
+    }
+    /* Subtle Expander styling */
+    .streamlit-expanderHeader { 
+        background-color: rgba(18, 22, 29, 0.5) !important; 
+        border-radius: 2px; 
+        font-family: 'Courier New', Courier, monospace;
+    }
+    /* Terminal text for captions */
+    .stCaption {
+        font-family: 'Courier New', Courier, monospace;
+        color: #00E5FF !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -67,26 +83,26 @@ def get_macro_data():
 
 USD_TO_MYR, FERT_PRICE, FERT_PCT, SHIP_PRICE, SHIP_PCT = get_macro_data()
 
-# --- THE COMMODITY DATABASE ---
+# --- THE COMMODITY DATABASE (EMOJIS SCRUBBED) ---
 BASE_COMMODITIES = {
-    "🌾 Grains & Cereals": {
+    "GRAINS & CEREALS": {
         "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155, "lat": 38.5, "lon": -98.0, "region": "Kansas, USA"},
         "Corn": {"ticker": "ZC=F", "search": "corn", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 25.4012, "lat": 42.0, "lon": -93.0, "region": "Iowa, USA"},
         "Soybeans": {"ticker": "ZS=F", "search": "soybeans", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155, "lat": -12.9, "lon": -56.0, "region": "Mato Grosso, Brazil"},
         "Rough Rice": {"ticker": "ZR=F", "search": "rice", "multiplier": 0.01, "unit": "Hundredweight", "kg_per_unit": 45.3592, "lat": 30.9, "lon": 75.8, "region": "Punjab, India"},
         "Oats": {"ticker": "ZO=F", "search": "oats", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 14.515, "lat": 50.5, "lon": -104.6, "region": "Saskatchewan, Canada"},
     },
-    "☕ Softs & Cash Crops": {
+    "SOFTS & CASH CROPS": {
         "Cocoa": {"ticker": "CC=F", "search": "cocoa", "multiplier": 1.0, "unit": "Metric Ton", "kg_per_unit": 1000.0, "lat": 7.5, "lon": -5.5, "region": "Ivory Coast, Africa"},
         "Coffee": {"ticker": "KC=F", "search": "coffee", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": -19.9, "lon": -43.9, "region": "Minas Gerais, Brazil"},
         "Sugar": {"ticker": "SB=F", "search": "sugar", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": -22.9, "lon": -47.0, "region": "São Paulo, Brazil"},
         "Orange Juice": {"ticker": "OJ=F", "search": "orange juice", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": 28.5, "lon": -81.3, "region": "Florida, USA"},
     },
-    "🥩 Meats & Livestock": {
+    "MEATS & LIVESTOCK": {
         "Live Cattle (Beef)": {"ticker": "LE=F", "search": "beef", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": 31.9, "lon": -99.9, "region": "Texas, USA"},
         "Lean Hogs (Pork)": {"ticker": "HE=F", "search": "pork", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": 42.0, "lon": -93.0, "region": "Iowa, USA"},
     },
-    "🥛 Dairy & Oils": {
+    "DAIRY & OILS": {
         "Class III Milk": {"ticker": "DC=F", "search": "milk", "multiplier": 1.0, "unit": "Hundredweight", "kg_per_unit": 45.3592, "lat": 44.5, "lon": -90.0, "region": "Wisconsin, USA"},
         "Soybean Oil": {"ticker": "ZL=F", "search": "soybean oil", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": -12.9, "lon": -56.0, "region": "Mato Grosso, Brazil"},
     }
@@ -130,7 +146,7 @@ def get_financial_data(ticker, multiplier):
     except: return 0.0, 0.0, 0.0, 50.0, pd.DataFrame()
 
 def get_weather_data(lat, lon):
-    if not lat or not lon: return None
+    if not lat or not lon or lat == 0.0: return None
     try:
         res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&daily=precipitation_sum&timezone=auto").json()
         return {"temp": res['current_weather']['temperature'], "rain": sum(res['daily']['precipitation_sum'][:7])}
@@ -158,62 +174,75 @@ def calculate_master_threat(price_pct, sentiment, rsi, fert_pct, ship_pct, weath
         if weather:
             if weather['temp'] > 32.0: score += 7.5 
             if weather['rain'] < 5.0: score += 7.5 
-    if score >= 70: return score, "🔴 DEFCON 1 (CRITICAL)"
-    if score >= 40: return score, "🟠 DEFCON 2 (ELEVATED)"
-    return score, "🟢 DEFCON 3 (NORMAL)"
+    if score >= 70: return score, "DEFCON 1 [CRITICAL]"
+    if score >= 40: return score, "DEFCON 2 [ELEVATED]"
+    return score, "DEFCON 3 [NORMAL]"
 
 def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, threat_score, is_osint_only):
-    if not groq_client: return "⚠️ AI Offline."
+    if not groq_client: return "SYSTEM ERROR: AI CORE OFFLINE."
     headlines = [art['Headline'] for art in articles[:5]] if articles else ["No news."]
     weather_txt = f"Temp: {weather['temp']}C, Rain: {weather['rain']}mm" if weather else "N/A"
     
     prompt = f"Act as a CIA analyst for food security. Target: {commodity}. Threat Score: {threat_score}/100. "
     if is_osint_only:
-        prompt += f"CRITICAL: NO FINANCIAL DATA EXISTS. Base summary on News: {headlines} and Weather: {weather_txt}. Write 2 tactical sentences."
+        prompt += f"CRITICAL: NO FINANCIAL DATA EXISTS. Base summary on News: {headlines} and Weather: {weather_txt}. Write 2 tactical sentences. Tone: Cold, professional, military intelligence."
     else:
-        prompt += f"Price Change: {price_change:.2f}%. RSI: {rsi:.1f}. Fertilizer Change: {fert_pct:.2f}%. Weather: {weather_txt}. Headlines: {headlines}. Write 2 tactical sentences."
+        prompt += f"Price Change: {price_change:.2f}%. RSI: {rsi:.1f}. Fertilizer Change: {fert_pct:.2f}%. Weather: {weather_txt}. Headlines: {headlines}. Write 2 tactical sentences. Tone: Cold, professional, military intelligence."
         
     try: return groq_client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="llama-3.3-70b-versatile").choices[0].message.content
-    except: return "AI Error."
+    except: return "SYSTEM ERROR: AI CORE UNRESPONSIVE."
 
 def ai_auto_discover(food_name, existing_categories):
     if not groq_client: return None, "AI is offline."
     prompt = f"""Find global data for: "{food_name}". Return ONLY valid JSON.
-    {{"category": "MUST be one of: {existing_categories}. Or invent a new one with emoji.", "ticker": "Yahoo Finance futures ticker (e.g. CPO=F). If it DOES NOT TRADE on futures, return 'NONE'", "search": "1 word search term for news", "unit": "Trading unit (e.g. Metric Ton). If NONE, put 'Kg'", "kg_per_unit": Float kg in unit. If NONE, put 1.0, "is_cents": true if US Cents, false if USD. If NONE, put false, "lat": Float latitude of primary region. If unknown, put 0.0, "lon": Float longitude. If unknown, put 0.0, "region": String name of region. If unknown, put "Unknown"}}"""
+    {{"category": "MUST be one of: {existing_categories}. Or invent a new one (UPPERCASE, NO EMOJIS).", "ticker": "Yahoo Finance futures ticker (e.g. CPO=F). If it DOES NOT TRADE on futures, return 'NONE'", "search": "1 word search term for news", "unit": "Trading unit (e.g. Metric Ton). If NONE, put 'Kg'", "kg_per_unit": Float kg in unit. If NONE, put 1.0, "is_cents": true if US Cents, false if USD. If NONE, put false, "lat": Float latitude of primary region. If unknown, put 0.0, "lon": Float longitude. If unknown, put 0.0, "region": String name of region. If unknown, put "Unknown"}}"""
     try: return json.loads(groq_client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="llama-3.3-70b-versatile").choices[0].message.content.replace("```json", "").replace("```", "").strip()), "Success"
     except: return None, "Failed"
 
 # --- SIDEBAR COMMAND CENTER ---
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/US_Department_of_Agriculture_seal.svg/1024px-US_Department_of_Agriculture_seal.svg.png", width=100)
-st.sidebar.title("Command Center")
+st.sidebar.title("/// COMMAND CENTER")
 
 if not COMMODITIES: st.stop()
 
-search_mode = st.sidebar.radio("Navigation Mode", ["Browse by Sector", "Search All Targets"])
+search_mode = st.sidebar.radio("NAVIGATION MODE", ["BROWSE BY SECTOR", "SEARCH ALL TARGETS"])
 
-if search_mode == "Browse by Sector":
-    selected_category = st.sidebar.selectbox("1. Select Sector", list(COMMODITIES.keys()))
-    selected_commodity = st.sidebar.selectbox("2. Select Target", list(COMMODITIES[selected_category].keys()))
+if search_mode == "BROWSE BY SECTOR":
+    selected_category = st.sidebar.selectbox("1. SELECT SECTOR", list(COMMODITIES.keys()))
+    selected_commodity = st.sidebar.selectbox("2. SELECT TARGET", list(COMMODITIES[selected_category].keys()))
 else:
     flat_foods = {f"{food} ({cat})": (cat, food) for cat, foods in COMMODITIES.items() for food in foods.keys()}
-    search_selection = st.sidebar.selectbox("🔍 Search Target", sorted(list(flat_foods.keys())))
+    search_selection = st.sidebar.selectbox("SEARCH TARGET", sorted(list(flat_foods.keys())))
     selected_category, selected_commodity = flat_foods[search_selection]
 
 details = COMMODITIES[selected_category][selected_commodity]
 is_osint_only = details.get("ticker") == "NONE"
 
+# --- BULLETPROOF DATA SANITIZER FOR MAP ---
+try:
+    center_lat = float(details.get("lat", 0.0))
+    center_lon = float(details.get("lon", 0.0))
+except (ValueError, TypeError):
+    center_lat, center_lon = 0.0, 0.0
+
+if np.isnan(center_lat): center_lat = 0.0
+if np.isnan(center_lon): center_lon = 0.0
+center_lat = max(-89.9, min(89.9, center_lat))
+center_lon = max(-179.9, min(179.9, center_lon))
+
 st.sidebar.divider()
-st.sidebar.markdown("### 🚢 Macro Inputs (Logistics)")
-st.sidebar.metric("Global Fertilizer (NTR)", f"${FERT_PRICE:.2f}", f"{FERT_PCT:.2f}%")
-st.sidebar.metric("Dry Bulk Shipping (BDRY)", f"${SHIP_PRICE:.2f}", f"{SHIP_PCT:.2f}%")
+st.sidebar.markdown("### MACRO LOGISTICS")
+st.sidebar.metric("GLOBAL FERTILIZER (NTR)", f"${FERT_PRICE:.2f}", f"{FERT_PCT:.2f}%")
+st.sidebar.metric("DRY BULK SHIPPING (BDRY)", f"${SHIP_PRICE:.2f}", f"{SHIP_PCT:.2f}%")
 
 st.sidebar.divider()
 
-st.sidebar.markdown("### 🤖 AI Auto-Discover")
-new_food_name = st.sidebar.text_input("Enter Target (e.g., Matcha, Palm Oil)")
-if st.sidebar.button("Auto-Detect & Deploy"):
+st.sidebar.markdown("### [+] AUTO-DISCOVER")
+st.sidebar.caption("> INITIATE AI TARGET ACQUISITION")
+new_food_name = st.sidebar.text_input("ENTER TARGET NAME:")
+
+if st.sidebar.button("DEPLOY TRACKER"):
     if new_food_name:
-        with st.sidebar.status("AI is hunting..."):
+        with st.sidebar.status("ACQUIRING DATA..."):
             ai_data, status = ai_auto_discover(new_food_name, list(BASE_COMMODITIES.keys()))
             if ai_data:
                 cat = ai_data["category"]
@@ -225,79 +254,66 @@ if st.sidebar.button("Auto-Detect & Deploy"):
                 st.rerun()
 
 # --- MAIN DASHBOARD UI ---
-st.title("🌍 Global Food Supply Threat Matrix")
-
-# --- IRONCLAD DATA SANITIZER FOR MAP ---
-try:
-    center_lat = float(details.get("lat", 0.0))
-    center_lon = float(details.get("lon", 0.0))
-except:
-    center_lat = 0.0
-    center_lon = 0.0
-
-# Clamp coordinates mathematically to prevent Plotly ValueErrors
-center_lat = max(-89.9, min(89.9, center_lat))
-center_lon = max(-179.9, min(179.9, center_lon))
+st.title("/// GLOBAL FOOD SUPPLY THREAT MATRIX")
 
 # --- BULLETPROOF 3D WAR ROOM MAP ---
-try:
-    map_data = []
-    for cat, foods in COMMODITIES.items():
-        for name, d in foods.items():
-            try:
-                l_lat = float(d.get("lat", 0.0))
-                l_lon = float(d.get("lon", 0.0))
-                l_lat = max(-89.9, min(89.9, l_lat))
-                l_lon = max(-179.9, min(179.9, l_lon))
-                if l_lat != 0.0 or l_lon != 0.0: 
-                    map_data.append({"Name": name, "Lat": l_lat, "Lon": l_lon})
-            except: pass
+map_data = []
+for cat, foods in COMMODITIES.items():
+    for name, d in foods.items():
+        try:
+            l_lat = float(d.get("lat", 0.0))
+            l_lon = float(d.get("lon", 0.0))
+            if np.isnan(l_lat): l_lat = 0.0
+            if np.isnan(l_lon): l_lon = 0.0
+            l_lat = max(-89.9, min(89.9, l_lat))
+            l_lon = max(-179.9, min(179.9, l_lon))
+            if l_lat != 0.0 or l_lon != 0.0: 
+                map_data.append({"Name": name, "Lat": l_lat, "Lon": l_lon})
+        except: pass
 
-    if map_data:
-        df_map = pd.DataFrame(map_data)
-        fig_map = go.Figure()
-        
-        # Inactive global targets
+if map_data:
+    df_map = pd.DataFrame(map_data)
+    fig_map = go.Figure()
+    
+    # Inactive global targets
+    fig_map.add_trace(go.Scattergeo(
+        lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'],
+        mode='markers', marker=dict(size=5, color='#00E5FF', opacity=0.3),
+        hoverinfo='text', name="Global Targets"
+    ))
+    
+    # Active Target
+    if center_lat != 0.0 or center_lon != 0.0:
         fig_map.add_trace(go.Scattergeo(
-            lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'],
-            mode='markers', marker=dict(size=6, color='#00E5FF', opacity=0.4),
-            hoverinfo='text', name="Global Targets"
+            lon=[center_lon], lat=[center_lat],
+            mode='markers', marker=dict(size=40, color='#FF3366', opacity=0.15),
+            hoverinfo='none', name="Radar"
         ))
-        
-        # Active Target
-        if center_lat != 0.0 or center_lon != 0.0:
-            fig_map.add_trace(go.Scattergeo(
-                lon=[center_lon], lat=[center_lat],
-                mode='markers', marker=dict(size=35, color='#FF3366', opacity=0.2),
-                hoverinfo='none', name="Radar"
-            ))
-            fig_map.add_trace(go.Scattergeo(
-                lon=[center_lon], lat=[center_lat], text=[f"ACTIVE TARGET: {selected_commodity}"],
-                mode='markers', marker=dict(size=10, color='#FF3366', line=dict(width=2, color='#FFFFFF')),
-                hoverinfo='text', name="Active Target"
-            ))
-        
-        # Extremely safe layout update method
-        fig_map.update_layout(
-            geo=dict(
-                projection_type="orthographic",
-                projection_rotation=dict(lon=center_lon, lat=center_lat, roll=0),
-                showcoastlines=True, coastcolor="#1A1E24",
-                showland=True, landcolor="#12161D",
-                showocean=True, oceancolor="#0B0E14",
-                showcountries=True, countrycolor="#1A1E24",
-                showframe=False,
-                bgcolor="rgba(0,0,0,0)"
-            ),
-            height=600,
-            margin=dict(l=0, r=0, t=0, b=0),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            showlegend=False
-        )
-        st.plotly_chart(fig_map, use_container_width=True)
-except Exception as e:
-    st.error("📡 Global Map Radar is temporarily offline. Awaiting coordinate recalibration.")
+        fig_map.add_trace(go.Scattergeo(
+            lon=[center_lon], lat=[center_lat], text=[f"ACTIVE TARGET: {selected_commodity}"],
+            mode='markers', marker=dict(size=8, color='#FF3366', line=dict(width=1, color='#FFFFFF')),
+            hoverinfo='text', name="Active Target"
+        ))
+    
+    fig_map.update_geos(
+        projection_type="orthographic",
+        projection_rotation=dict(lon=center_lon, lat=center_lat, roll=0),
+        showcoastlines=True, coastcolor="#1A1E24",
+        showland=True, landcolor="#12161D",
+        showocean=True, oceancolor="#0B0E14",
+        showcountries=True, countrycolor="#1A1E24",
+        showframe=False,
+        bgcolor="rgba(0,0,0,0)"
+    )
+    
+    fig_map.update_layout(
+        height=550,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False
+    )
+    st.plotly_chart(fig_map, use_container_width=True)
 
 # Fetch Data
 price_usd, price_change, trend_ma, rsi, price_history = get_financial_data(details["ticker"], details.get("multiplier", 1.0))
@@ -314,10 +330,10 @@ threat_score, threat_level = calculate_master_threat(price_change, avg_sentiment
 
 # Header & Delete
 col_head1, col_head2 = st.columns([5, 1])
-with col_head1: st.header(f"🎯 Target Acquired: {selected_commodity}")
+with col_head1: st.header(f"TARGET ACQUIRED: {selected_commodity}")
 with col_head2:
     st.write("")
-    if st.button("🗑️ Remove Target", type="tertiary"):
+    if st.button("REMOVE TARGET", type="tertiary"):
         if selected_category in st.session_state.custom_foods and selected_commodity in st.session_state.custom_foods[selected_category]:
             del st.session_state.custom_foods[selected_category][selected_commodity]
         else: st.session_state.deleted_foods.append((selected_category, selected_commodity))
@@ -343,42 +359,42 @@ AI TACTICAL SUMMARY:
 {get_ai_brief(selected_commodity, news_articles, price_change, rsi, FERT_PCT, weather, threat_score, is_osint_only)}
 """
 
-col_btn1, col_btn2 = st.columns([1, 8])
+col_btn1, col_btn2 = st.columns([2, 8])
 with col_btn1:
-    st.download_button(label="📄 Download Briefing", data=report_text, file_name=f"{selected_commodity}_Briefing_{datetime.now().strftime('%Y%m%d')}.txt", mime="text/plain")
+    st.download_button(label="EXPORT BRIEFING", data=report_text, file_name=f"{selected_commodity}_Briefing_{datetime.now().strftime('%Y%m%d')}.txt", mime="text/plain")
 with col_btn2:
-    if st.button("🚨 Push Alert to Telegram"):
-        if send_telegram_alert(f"🚨 *THREAT ALERT: {selected_commodity}*\nStatus: {threat_level}\nScore: {threat_score}/100\nPrice Change: {price_change:.2f}%"): st.success("Alert sent!")
-        else: st.error("Telegram not configured.")
+    if st.button("PUSH ALERT TO SECURE CHANNEL"):
+        if send_telegram_alert(f"🚨 *THREAT ALERT: {selected_commodity}*\nStatus: {threat_level}\nScore: {threat_score}/100\nPrice Change: {price_change:.2f}%"): st.success("TRANSMISSION SUCCESSFUL.")
+        else: st.error("TRANSMISSION FAILED. CHECK TELEGRAM CONFIG.")
 
-if "DEFCON 1" in threat_level: st.error(f"🚨 **CRITICAL ALERT:** {selected_commodity} Threat Score is {threat_score}/100. Multiple macro indicators (Price, Weather, OSINT, or Logistics) are flashing red.")
-elif "DEFCON 2" in threat_level: st.warning(f"⚠️ **ELEVATED RISK:** {selected_commodity} Threat Score is {threat_score}/100. Anomalies detected in supply chain inputs.")
+if "DEFCON 1" in threat_level: st.error(f"CRITICAL ALERT: {selected_commodity} Threat Score is {threat_score}/100. Multiple macro indicators are flashing red.")
+elif "DEFCON 2" in threat_level: st.warning(f"ELEVATED RISK: {selected_commodity} Threat Score is {threat_score}/100. Anomalies detected in supply chain inputs.")
 
-if is_osint_only: st.warning("🕵️ **OSINT-ONLY MODE:** Tracking via Global News Sentiment only.")
+if is_osint_only: st.warning("OSINT-ONLY MODE: Tracking via Global News Sentiment only. Financial data unavailable.")
 
 # Metrics Row
 if not is_osint_only:
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1: 
-        st.metric(label=f"Price USD ({details['unit']})", value=f"${price_usd:.2f}", delta=f"{price_change:.2f}%")
-        st.caption(f"Standardized: **${price_per_kg_usd:.4f} / {std_unit}**")
+        st.metric(label=f"PRICE USD ({details['unit']})", value=f"${price_usd:.2f}", delta=f"{price_change:.2f}%")
+        st.caption(f"> ${price_per_kg_usd:.4f} / {std_unit}")
     with col2: 
-        st.metric(label="Price in MYR", value=f"RM {price_myr:.2f}")
-        st.caption(f"Standardized: **RM {price_per_kg_myr:.4f} / {std_unit}**")
-    with col3: st.metric(label="Technical RSI", value=f"{rsi:.1f}", delta="🔥 OVERBOUGHT" if rsi > 70 else "❄️ OVERSOLD" if rsi < 30 else "⚖️ NEUTRAL", delta_color="off")
-    with col4: st.metric(label="OSINT Sentiment", value=f"{avg_sentiment:.2f}", delta="Negative = Threat", delta_color="inverse")
-    with col5: st.metric(label="Master Threat", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
+        st.metric(label="PRICE MYR", value=f"RM {price_myr:.2f}")
+        st.caption(f"> RM {price_per_kg_myr:.4f} / {std_unit}")
+    with col3: st.metric(label="TECHNICAL RSI", value=f"{rsi:.1f}", delta="OVERBOUGHT" if rsi > 70 else "OVERSOLD" if rsi < 30 else "NEUTRAL", delta_color="off")
+    with col4: st.metric(label="OSINT SENTIMENT", value=f"{avg_sentiment:.2f}", delta="NEGATIVE = THREAT", delta_color="inverse")
+    with col5: st.metric(label="MASTER THREAT", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
 else:
     col1, col2, col3 = st.columns(3)
-    with col1: st.metric(label="OSINT Sentiment", value=f"{avg_sentiment:.2f}", delta="Negative = Threat", delta_color="inverse")
-    with col2: st.metric(label="Master Threat Score", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
+    with col1: st.metric(label="OSINT SENTIMENT", value=f"{avg_sentiment:.2f}", delta="NEGATIVE = THREAT", delta_color="inverse")
+    with col2: st.metric(label="MASTER THREAT SCORE", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
     with col3: st.empty()
 
-if weather and center_lat != 0.0: st.info(f"🌦️ **CLIMATE INTEL ({details.get('region', 'Unknown')}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
+if weather and center_lat != 0.0: st.info(f"CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
 
 # AI Brief
-st.markdown("### 🤖 AI Analyst Brief (BLUF)")
-with st.spinner('Decrypting intel...'):
+st.markdown("### AI TACTICAL ANALYSIS")
+with st.spinner('DECRYPTING INTEL...'):
     ai_summary = get_ai_brief(selected_commodity, news_articles, price_change, rsi, FERT_PCT, weather, threat_score, is_osint_only)
     st.info(ai_summary)
 
@@ -386,22 +402,22 @@ with st.spinner('Decrypting intel...'):
 col_chart, col_news = st.columns([2, 1])
 with col_chart:
     if not is_osint_only and not price_history.empty:
-        st.markdown("### 📈 90-Day Technical Analysis (FININT)")
+        st.markdown("### 90-DAY TECHNICAL ANALYSIS")
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=price_history.index, open=price_history['Open']*details["multiplier"], high=price_history['High']*details["multiplier"], low=price_history['Low']*details["multiplier"], close=price_history['Close']*details["multiplier"], name="Price"))
-        fig.add_trace(go.Scatter(x=price_history.index, y=price_history['50_MA']*details["multiplier"], line=dict(color='orange', width=2), name="50-Day MA"))
-        fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False)
+        fig.add_trace(go.Scatter(x=price_history.index, y=price_history['50_MA']*details["multiplier"], line=dict(color='#00E5FF', width=1.5), name="50-Day MA"))
+        fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
 with col_news:
-    st.markdown("### 📰 Live OSINT Chatter")
-    if news_articles: st.dataframe(pd.DataFrame(news_articles).style.map(lambda val: f'color: {"#ff4b4b" if val < 0 else "#00cc96"}', subset=['Threat Score']), hide_index=True)
-    else: st.info("No immediate threats detected.")
+    st.markdown("### LIVE OSINT CHATTER")
+    if news_articles: st.dataframe(pd.DataFrame(news_articles).style.map(lambda val: f'color: {"#FF3366" if val < 0 else "#00E5FF"}', subset=['Threat Score']), hide_index=True)
+    else: st.info("NO IMMEDIATE THREATS DETECTED.")
 
 st.divider()
 
 # --- AI INTERROGATION MODE ---
-st.markdown(f"### 🕵️ Interrogate the AI about {selected_commodity}")
-st.caption("Ask specific questions about the data, news, or historical trends of this commodity.")
+st.markdown(f"### >_ AI INTERROGATION TERMINAL: {selected_commodity}")
+st.caption("QUERY THE SYSTEM REGARDING HISTORICAL TRENDS OR LIVE DATA.")
 
 if selected_commodity not in st.session_state.chat_history:
     st.session_state.chat_history[selected_commodity] = []
@@ -410,16 +426,16 @@ for message in st.session_state.chat_history[selected_commodity]:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input(f"Ask a question about {selected_commodity}..."):
+if prompt := st.chat_input(f"ENTER QUERY..."):
     st.session_state.chat_history[selected_commodity].append({"role": "user", "content": prompt})
     with st.chat_message("user"): st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Analyzing..."):
-            context = f"Context for {selected_commodity}: Price Change: {price_change}%, RSI: {rsi}, Weather: {weather}, Threat Score: {threat_score}. News: {[a['Headline'] for a in articles[:3]] if news_articles else 'None'}. User Question: {prompt}"
+        with st.spinner("PROCESSING..."):
+            context = f"Context for {selected_commodity}: Price Change: {price_change}%, RSI: {rsi}, Weather: {weather}, Threat Score: {threat_score}. News: {[a['Headline'] for a in articles[:3]] if news_articles else 'None'}. User Question: {prompt}. Tone: Cold, professional, military intelligence."
             try:
                 response = groq_client.chat.completions.create(messages=[{"role": "user", "content": context}], model="llama-3.3-70b-versatile").choices[0].message.content
                 st.markdown(response)
                 st.session_state.chat_history[selected_commodity].append({"role": "assistant", "content": response})
             except:
-                st.error("AI Interrogation Offline.")
+                st.error("SYSTEM ERROR: AI CORE UNRESPONSIVE.")
