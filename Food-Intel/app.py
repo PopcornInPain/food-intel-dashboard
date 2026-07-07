@@ -200,6 +200,7 @@ def ai_auto_discover(food_name, existing_categories):
     except: return None, "Failed"
 
 # --- SIDEBAR COMMAND CENTER ---
+# RESTORED: Original Bracket Logo
 st.sidebar.markdown("""
 <div style="text-align: center; padding: 15px; border: 1px solid rgba(0, 229, 255, 0.3); border-radius: 4px; margin-bottom: 20px; background-color: rgba(0, 229, 255, 0.05);">
     <h2 style="color: #00E5FF; margin: 0; font-size: 1.4rem; letter-spacing: 3px; font-family: 'Courier New', monospace;">[ SYS.CORE ]</h2>
@@ -303,7 +304,6 @@ try:
                 hoverinfo='text', name="Active Target"
             ))
         
-        # FIXED: Removed bgcolor from here.
         fig_map.update_geos(
             projection=dict(
                 type="orthographic",
@@ -313,7 +313,8 @@ try:
             showland=True, landcolor="#12161D",
             showocean=True, oceancolor="#0B0E14",
             showcountries=True, countrycolor="#1A1E24",
-            showframe=False
+            showframe=False,
+            bgcolor="rgba(0,0,0,0)"
         )
         
         fig_map.update_layout(
@@ -321,14 +322,12 @@ try:
             margin=dict(l=0, r=0, t=0, b=0),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            geo_bgcolor="rgba(0,0,0,0)", # Correct placement for background color
+            geo_bgcolor="rgba(0,0,0,0)",
             showlegend=False
         )
         st.plotly_chart(fig_map, use_container_width=True)
 except Exception as e:
     st.error("[SYS_ERR] GEOSPATIAL RENDER ENGINE OFFLINE. AWAITING COORDINATE RECALIBRATION.")
-    with st.expander("VIEW DIAGNOSTIC LOGS"):
-        st.code(str(e))
 
 # Fetch Data
 price_usd, price_change, trend_ma, rsi, price_history = get_financial_data(details["ticker"], details.get("multiplier", 1.0))
@@ -405,7 +404,7 @@ else:
     with col2: st.metric(label="MASTER THREAT SCORE", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
     with col3: st.empty()
 
-if weather and center_lat != 0.0: st.info(f"[+] CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
+if weather and center_lat != 0.0: st.info(f"⌖ CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
 
 # AI Brief
 st.markdown("### ⎔ AI TACTICAL ANALYSIS")
