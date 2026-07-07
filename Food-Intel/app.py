@@ -148,19 +148,28 @@ def calculate_master_threat(price_pct, sentiment, rsi, fert_pct, ship_pct, weath
     if score >= 40: return score, "🟠 DEFCON 2 (ELEVATED)"
     return score, "🟢 DEFCON 3 (NORMAL)"
 
-def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, threat_score):
+def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, threat_score, is_osint_only):
     if not groq_client: return "⚠️ AI Offline."
     headlines = [art['Headline'] for art in articles[:5]] if articles else ["No news."]
     weather_txt = f"Temp: {weather['temp']}C, Rain: {weather['rain']}mm" if weather else "N/A"
     
-    prompt = f"""
-    Act as a CIA analyst for food security. Target: {commodity}. 
-    Master Threat Score: {threat_score}/100.
-    DATA INPUTS: Price Change: {price_change:.2f}%. RSI: {rsi:.1f}. Global Fertilizer Change: {fert_pct:.2f}%. 
-    Weather at Chokepoint: {weather_txt}. 
-    Headlines: {headlines}. 
-    Write a 2-sentence tactical 'BLUF' summarizing the threat. Connect the macro data (fertilizer/weather/RSI) to the news if relevant.
-    """
+    # NEW: The AI now has Situational Awareness of OSINT-Only mode
+    if is_osint_only:
+        prompt = f"""
+        Act as a CIA analyst for food security. Target: {commodity}. Master Threat Score: {threat_score}/100.
+        CRITICAL INSTRUCTION: This commodity is NOT traded on global financial markets. You have ZERO price data and ZERO RSI data. 
+        DO NOT mention "stable prices", "0.00% change", or "neutral RSI". 
+        DATA INPUTS: Global Fertilizer Change: {fert_pct:.2f}%. Headlines: {headlines}. 
+        Write a 2-sentence tactical 'BLUF' summarizing the threat based EXCLUSIVELY on the news headlines and fertilizer data.
+        """
+    else:
+        prompt = f"""
+        Act as a CIA analyst for food security. Target: {commodity}. Master Threat Score: {threat_score}/100.
+        DATA INPUTS: Price Change: {price_change:.2f}%. RSI: {rsi:.1f}. Global Fertilizer Change: {fert_pct:.2f}%. 
+        Weather at Chokepoint: {weather_txt}. Headlines: {headlines}. 
+        Write a 2-sentence tactical 'BLUF' summarizing the threat. Connect the macro data (fertilizer/weather/RSI) to the news if relevant.
+        """
+        
     try:
         chat = groq_client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="llama-3.3-70b-versatile")
         return chat.choices[0].message.content
@@ -276,7 +285,6 @@ kg_per_unit = details.get("kg_per_unit", 1.0)
 price_per_kg_usd = price_usd / kg_per_unit if kg_per_unit > 0 else 0
 price_per_kg_myr = price_myr / kg_per_unit if kg_per_unit > 0 else 0
 
-# Determine if it's a liquid for the label
 std_unit = "L" if "gallon" in details.get("unit", "").lower() or "liter" in details.get("unit", "").lower() else "kg"
 
 # RUN MASTER THREAT ALGORITHM
@@ -302,7 +310,7 @@ elif "DEFCON 2" in threat_level:
 
 if is_osint_only: st.warning("🕵️ **OSINT-ONLY MODE:** Tracking via Global News Sentiment only.")
 
-# --- METRICS ROW (Expanded to 5 columns to fit MYR and Standardized Pricing) ---
+# --- METRICS ROW ---
 if not is_osint_only:
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1: 
@@ -326,10 +334,10 @@ else:
 
 if weather: st.info(f"🌦️ **CLIMATE INTEL ({details['region']}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
 
-# AI Brief
+# AI Brief (Now passing is_osint_only to give the AI situational awareness)
 st.markdown("### 🤖 AI Analyst Brief (BLUF)")
 with st.spinner('Decrypting intel...'):
-    st.info(get_ai_brief(selected_commodity, news_articles, price_change, rsi, FERT_PCT, weather, threat_score))
+    st.info(get_ai_brief(selected_commodity, news_articles, price_change, rsi, FERT_PCT, weather, threat_score, is_osint_only))
 
 # Charts & News
 col_chart, col_news = st.columns([2, 1])
