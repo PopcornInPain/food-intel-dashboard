@@ -16,36 +16,30 @@ from datetime import datetime
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
 
-# --- CUSTOM CSS (FORCED DARK MODE & SMOOTH MAP FADE) ---
+# --- CUSTOM CSS (CINEMATIC TERMINAL THEME & MAP BLUR) ---
 st.markdown("""
 <style>
-    /* FORCE GLOBAL DARK MODE */
-    .stApp {
-        background-color: #0B0E14 !important;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #12161D !important;
-    }
-    h1, h2, h3, h4, h5, h6, p, span, div, label {
-        color: #E0E6ED !important;
-    }
-    h1, h2, h3 { 
-        font-weight: 300 !important; 
-        letter-spacing: 1px; 
-        text-transform: uppercase;
-        font-family: 'Courier New', Courier, monospace;
-        color: #FFFFFF !important;
-    }
     /* Sleek Metric Cards */
     div[data-testid="stMetric"] {
-        background-color: #1A1E24 !important;
+        background-color: #12161D !important;
         border-left: 3px solid #00E5FF;
         border-radius: 2px;
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.4);
     }
+    div[data-testid="stMetric"] label, 
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+        color: #E0E6ED !important; 
+    }
+    /* Clean Typography */
+    h1, h2, h3 { 
+        font-weight: 300 !important; 
+        letter-spacing: 1px; 
+        text-transform: uppercase;
+        font-family: 'Courier New', Courier, monospace;
+    }
     .streamlit-expanderHeader { 
-        background-color: #1A1E24 !important; 
+        background-color: rgba(18, 22, 29, 0.5) !important; 
         border-radius: 2px; 
         font-family: 'Courier New', Courier, monospace;
     }
@@ -53,11 +47,12 @@ st.markdown("""
         font-family: 'Courier New', Courier, monospace;
         color: #00E5FF !important;
     }
-    /* SMOOTH CINEMATIC MAP FADE (Bottom edge only) */
+    /* CINEMATIC MAP VIGNETTE (SMOOTH BLURRED BORDERS) */
     div[data-testid="stDeckGlJsonChart"] {
-        -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
-        mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
-        margin-bottom: 10px;
+        -webkit-mask-image: radial-gradient(ellipse at center, black 60%, transparent 100%);
+        mask-image: radial-gradient(ellipse at center, black 60%, transparent 100%);
+        margin-top: -10px;
+        margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -237,7 +232,7 @@ else:
 details = COMMODITIES[selected_category][selected_commodity]
 is_osint_only = details.get("ticker") == "NONE"
 
-# --- DATA SANITIZER ---
+# --- BULLETPROOF DATA SANITIZER FOR MAP ---
 try:
     center_lat = float(details.get("lat", 0.0))
     if pd.isna(center_lat): center_lat = 0.0
@@ -278,7 +273,7 @@ if st.sidebar.button("DEPLOY TRACKER"):
 # --- MAIN DASHBOARD UI ---
 st.title("❖ GLOBAL FOOD SUPPLY THREAT MATRIX")
 
-# --- BIGGER, SMOOTHLY FADED PYDECK MAP ---
+# --- BIGGER, BLURRED CINEMATIC PYDECK MAP ---
 active_data = []
 global_data = []
 
@@ -331,9 +326,8 @@ view_state = pdk.ViewState(
     bearing=0
 )
 
-# FORCE DARK MAP STYLE SO IT MATCHES THE FORCED DARK UI
+# Height increased to 700 for a massive hero banner
 st.pydeck_chart(pdk.Deck(
-    map_style='dark',
     initial_view_state=view_state,
     layers=layers,
     tooltip={"text": "{name}"}
@@ -431,17 +425,7 @@ with col_chart:
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=price_history.index, open=price_history['Open']*details["multiplier"], high=price_history['High']*details["multiplier"], low=price_history['Low']*details["multiplier"], close=price_history['Close']*details["multiplier"], name="Price"))
         fig.add_trace(go.Scatter(x=price_history.index, y=price_history['50_MA']*details["multiplier"], line=dict(color='#00E5FF', width=1.5), name="50-Day MA"))
-        
-        # Force dark mode on the chart to match the app
-        fig.update_layout(
-            margin=dict(l=20, r=20, t=20, b=20), 
-            xaxis_rangeslider_visible=False, 
-            paper_bgcolor="rgba(0,0,0,0)", 
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#E0E6ED"),
-            xaxis=dict(gridcolor="#1A1E24"),
-            yaxis=dict(gridcolor="#1A1E24")
-        )
+        fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
 with col_news:
     st.markdown("### ▧ LIVE OSINT CHATTER")
