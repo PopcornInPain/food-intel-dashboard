@@ -167,7 +167,6 @@ def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, thre
     except Exception as e:
         return f"AI Error: {e}"
 
-# --- RESTORED: AI AUTO-DISCOVER FUNCTION ---
 def ai_auto_discover(food_name, existing_categories):
     if not groq_client: return None, "AI is offline."
     prompt = f"""
@@ -206,7 +205,7 @@ st.sidebar.metric("Dry Bulk Shipping (BDRY)", f"${SHIP_PRICE:.2f}", f"{SHIP_PCT:
 
 st.sidebar.divider()
 
-# --- RESTORED: AI AUTO-DISCOVER UI ---
+# --- AI AUTO-DISCOVER UI ---
 st.sidebar.markdown("### 🤖 AI Auto-Discover")
 st.sidebar.caption("Type any food. The AI will find financial data, or activate OSINT-Only mode if it's not traded.")
 new_food_name = st.sidebar.text_input("Enter Target (e.g., Matcha, Palm Oil)")
@@ -230,7 +229,7 @@ if st.sidebar.button("Auto-Detect & Deploy"):
                     "multiplier": multiplier,
                     "unit": ai_data["unit"],
                     "kg_per_unit": ai_data["kg_per_unit"],
-                    "lat": None, "lon": None # Custom foods don't get weather yet
+                    "lat": None, "lon": None 
                 }
                 st.rerun()
             else:
@@ -239,7 +238,7 @@ if st.sidebar.button("Auto-Detect & Deploy"):
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 
-# --- RESTORED & UPGRADED: FIELD MANUAL ---
+# --- FIELD MANUAL ---
 with st.expander("📖 FIELD MANUAL: System Architecture & Threat Logic", expanded=False):
     st.markdown("""
     ### 🛡️ Intelligence Architecture
@@ -271,6 +270,15 @@ price_usd, price_change, trend_ma, rsi, price_history = get_financial_data(detai
 avg_sentiment, news_articles = get_news_data(details["search"])
 weather = get_weather_data(details.get("lat"), details.get("lon"))
 
+# Standardized KG/L Math
+price_myr = price_usd * USD_TO_MYR
+kg_per_unit = details.get("kg_per_unit", 1.0)
+price_per_kg_usd = price_usd / kg_per_unit if kg_per_unit > 0 else 0
+price_per_kg_myr = price_myr / kg_per_unit if kg_per_unit > 0 else 0
+
+# Determine if it's a liquid for the label
+std_unit = "L" if "gallon" in details.get("unit", "").lower() or "liter" in details.get("unit", "").lower() else "kg"
+
 # RUN MASTER THREAT ALGORITHM
 threat_score, threat_level = calculate_master_threat(price_change, avg_sentiment, rsi, FERT_PCT, SHIP_PCT, weather, is_osint_only)
 
@@ -294,14 +302,27 @@ elif "DEFCON 2" in threat_level:
 
 if is_osint_only: st.warning("🕵️ **OSINT-ONLY MODE:** Tracking via Global News Sentiment only.")
 
-# Metrics Row
-col1, col2, col3, col4 = st.columns(4)
-with col1: 
-    if not is_osint_only: st.metric(label=f"Market Price ({details['unit']})", value=f"${price_usd:.2f}", delta=f"{price_change:.2f}%")
-with col2: 
-    if not is_osint_only: st.metric(label="Technical RSI (14-Day)", value=f"{rsi:.1f}", delta="🔥 OVERBOUGHT" if rsi > 70 else "❄️ OVERSOLD" if rsi < 30 else "⚖️ NEUTRAL", delta_color="off")
-with col3: st.metric(label="OSINT Sentiment", value=f"{avg_sentiment:.2f}", delta="Negative = Threat", delta_color="inverse")
-with col4: st.metric(label="Master Threat Score", value=f"{threat_score} / 100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
+# --- METRICS ROW (Expanded to 5 columns to fit MYR and Standardized Pricing) ---
+if not is_osint_only:
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1: 
+        st.metric(label=f"Price USD ({details['unit']})", value=f"${price_usd:.2f}", delta=f"{price_change:.2f}%")
+        st.caption(f"Standardized: **${price_per_kg_usd:.4f} / {std_unit}**")
+    with col2: 
+        st.metric(label="Price in MYR", value=f"RM {price_myr:.2f}")
+        st.caption(f"Standardized: **RM {price_per_kg_myr:.4f} / {std_unit}**")
+    with col3: 
+        st.metric(label="Technical RSI", value=f"{rsi:.1f}", delta="🔥 OVERBOUGHT" if rsi > 70 else "❄️ OVERSOLD" if rsi < 30 else "⚖️ NEUTRAL", delta_color="off")
+    with col4: 
+        st.metric(label="OSINT Sentiment", value=f"{avg_sentiment:.2f}", delta="Negative = Threat", delta_color="inverse")
+    with col5: 
+        st.metric(label="Master Threat", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
+else:
+    # OSINT Only Mode Layout
+    col1, col2, col3 = st.columns(3)
+    with col1: st.metric(label="OSINT Sentiment", value=f"{avg_sentiment:.2f}", delta="Negative = Threat", delta_color="inverse")
+    with col2: st.metric(label="Master Threat Score", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
+    with col3: st.empty()
 
 if weather: st.info(f"🌦️ **CLIMATE INTEL ({details['region']}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
 
