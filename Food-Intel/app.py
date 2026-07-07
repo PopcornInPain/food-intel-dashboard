@@ -5,7 +5,7 @@ import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
 import pandas as pd
 import plotly.graph_objects as go
-import pydeck as pdk # NEW: The Cinematic 3D Map Engine
+import pydeck as pdk
 from groq import Groq
 import json
 import urllib.parse
@@ -16,9 +16,10 @@ from datetime import datetime
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
 
-# --- CUSTOM CSS (CLASSY, MINIMALIST TERMINAL THEME) ---
+# --- CUSTOM CSS (CINEMATIC TERMINAL THEME & MAP BLUR) ---
 st.markdown("""
 <style>
+    /* Sleek Metric Cards */
     div[data-testid="stMetric"] {
         background-color: #12161D !important;
         border-left: 3px solid #00E5FF;
@@ -30,6 +31,7 @@ st.markdown("""
     div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
         color: #E0E6ED !important; 
     }
+    /* Clean Typography */
     h1, h2, h3 { 
         font-weight: 300 !important; 
         letter-spacing: 1px; 
@@ -44,6 +46,13 @@ st.markdown("""
     .stCaption {
         font-family: 'Courier New', Courier, monospace;
         color: #00E5FF !important;
+    }
+    /* CINEMATIC MAP VIGNETTE (SMOOTH BLURRED BORDERS) */
+    div[data-testid="stDeckGlJsonChart"] {
+        -webkit-mask-image: radial-gradient(ellipse at center, black 60%, transparent 100%);
+        mask-image: radial-gradient(ellipse at center, black 60%, transparent 100%);
+        margin-top: -10px;
+        margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -223,7 +232,7 @@ else:
 details = COMMODITIES[selected_category][selected_commodity]
 is_osint_only = details.get("ticker") == "NONE"
 
-# --- DATA SANITIZER ---
+# --- BULLETPROOF DATA SANITIZER FOR MAP ---
 try:
     center_lat = float(details.get("lat", 0.0))
     if pd.isna(center_lat): center_lat = 0.0
@@ -233,6 +242,9 @@ try:
     center_lon = float(details.get("lon", 0.0))
     if pd.isna(center_lon): center_lon = 0.0
 except: center_lon = 0.0
+
+center_lat = float(max(-89.9, min(89.9, center_lat)))
+center_lon = float(max(-179.9, min(179.9, center_lon)))
 
 st.sidebar.divider()
 st.sidebar.markdown("### ⛙ MACRO LOGISTICS")
@@ -261,8 +273,7 @@ if st.sidebar.button("DEPLOY TRACKER"):
 # --- MAIN DASHBOARD UI ---
 st.title("❖ GLOBAL FOOD SUPPLY THREAT MATRIX")
 
-# --- NEW: PYDECK WEBGL 3D MAP ENGINE (NETFLIX HERO BANNER) ---
-# PyDeck is native to Streamlit, renders cinematic 3D maps, and never crashes on coordinates.
+# --- BIGGER, BLURRED CINEMATIC PYDECK MAP ---
 active_data = []
 global_data = []
 
@@ -279,48 +290,43 @@ for cat, foods in COMMODITIES.items():
         except: pass
 
 layers = []
-# Layer 1: Inactive Targets (Subtle Cyan Dots)
 if global_data:
     layers.append(pdk.Layer(
         "ScatterplotLayer",
         data=pd.DataFrame(global_data),
         get_position='[lon, lat]',
-        get_color='[0, 229, 255, 120]',
-        get_radius=150000, # 150km radius
+        get_color='[0, 229, 255, 150]',
+        get_radius=200000, 
         pickable=True
     ))
 
-# Layer 2: Active Target (Glowing Crimson Radar)
 if active_data:
-    # Inner Core
     layers.append(pdk.Layer(
         "ScatterplotLayer",
         data=pd.DataFrame(active_data),
         get_position='[lon, lat]',
         get_color='[255, 51, 102, 255]',
-        get_radius=200000, 
+        get_radius=300000, 
         pickable=True
     ))
-    # Outer Radar Ping
     layers.append(pdk.Layer(
         "ScatterplotLayer",
         data=pd.DataFrame(active_data),
         get_position='[lon, lat]',
-        get_color='[255, 51, 102, 50]',
-        get_radius=800000, 
+        get_color='[255, 51, 102, 60]',
+        get_radius=1000000, 
         pickable=False
     ))
 
-# Cinematic 3D Camera Angle
 view_state = pdk.ViewState(
     latitude=center_lat if center_lat != 0.0 else 20.0,
     longitude=center_lon if center_lon != 0.0 else 0.0,
     zoom=2.5 if (center_lat != 0.0 or center_lon != 0.0) else 1,
-    pitch=45, # This creates the 3D angled view
+    pitch=45, 
     bearing=0
 )
 
-# Render the massive WebGL Map
+# Height increased to 700 for a massive hero banner
 st.pydeck_chart(pdk.Deck(
     initial_view_state=view_state,
     layers=layers,
