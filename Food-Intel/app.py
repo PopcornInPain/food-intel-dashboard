@@ -15,16 +15,23 @@ from datetime import datetime
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
 
-# --- CUSTOM CSS (CLASSY, MINIMALIST TERMINAL THEME) ---
+# --- CUSTOM CSS (FIXED FOR LIGHT MODE COMPATIBILITY) ---
 st.markdown("""
 <style>
+    /* Sleek Metric Cards - Forced dark background with forced light text */
     div[data-testid="stMetric"] {
-        background-color: rgba(18, 22, 29, 0.85);
+        background-color: #12161D !important;
         border-left: 3px solid #00E5FF;
         border-radius: 2px;
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.4);
     }
+    /* Force metric text to be visible even in Light Mode */
+    div[data-testid="stMetric"] label, 
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+        color: #E0E6ED !important; 
+    }
+    /* Clean Typography */
     h1, h2, h3 { 
         font-weight: 300 !important; 
         letter-spacing: 1px; 
@@ -196,11 +203,15 @@ def ai_auto_discover(food_name, existing_categories):
     except: return None, "Failed"
 
 # --- SIDEBAR COMMAND CENTER ---
-# NEW CLASSY UI ICON (CSS Generated, no images to break)
+# NEW: Sleek SVG Wireframe Globe Icon
 st.sidebar.markdown("""
-<div style="text-align: center; padding: 15px; border: 1px solid rgba(0, 229, 255, 0.3); border-radius: 4px; margin-bottom: 20px; background-color: rgba(0, 229, 255, 0.05);">
-    <h2 style="color: #00E5FF; margin: 0; font-size: 1.4rem; letter-spacing: 3px; font-family: 'Courier New', monospace;">[ SYS.CORE ]</h2>
-    <div style="font-size: 0.75rem; color: #888; letter-spacing: 1px; margin-top: 5px;">GLOBAL THREAT MATRIX</div>
+<div style="text-align: center; padding: 10px; margin-bottom: 20px;">
+    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+    </svg>
+    <h3 style="color: #E0E6ED; margin: 10px 0 0 0; font-size: 1.2rem; letter-spacing: 2px;">SYS.CORE</h3>
 </div>
 """, unsafe_allow_html=True)
 
@@ -300,7 +311,7 @@ try:
                 hoverinfo='text', name="Active Target"
             ))
         
-        # Safe nested dictionary projection to prevent ValueError
+        # FIXED: Removed bgcolor from update_geos, moved to update_layout
         fig_map.update_geos(
             projection=dict(
                 type="orthographic",
@@ -310,8 +321,7 @@ try:
             showland=True, landcolor="#12161D",
             showocean=True, oceancolor="#0B0E14",
             showcountries=True, countrycolor="#1A1E24",
-            showframe=False,
-            bgcolor="rgba(0,0,0,0)"
+            showframe=False
         )
         
         fig_map.update_layout(
@@ -319,6 +329,7 @@ try:
             margin=dict(l=0, r=0, t=0, b=0),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
+            geo_bgcolor="rgba(0,0,0,0)", # FIXED PROPERTY
             showlegend=False
         )
         st.plotly_chart(fig_map, use_container_width=True)
@@ -374,7 +385,7 @@ with col_btn1:
     st.download_button(label="EXPORT BRIEFING", data=report_text, file_name=f"{selected_commodity}_Briefing_{datetime.now().strftime('%Y%m%d')}.txt", mime="text/plain")
 with col_btn2:
     if st.button("PUSH ALERT TO SECURE CHANNEL"):
-        if send_telegram_alert(f"[THREAT ALERT: {selected_commodity}]\nStatus: {threat_level}\nScore: {threat_score}/100\nPrice Change: {price_change:.2f}%"): st.success("TRANSMISSION SUCCESSFUL.")
+        if send_telegram_alert(f"🚨 *THREAT ALERT: {selected_commodity}*\nStatus: {threat_level}\nScore: {threat_score}/100\nPrice Change: {price_change:.2f}%"): st.success("TRANSMISSION SUCCESSFUL.")
         else: st.error("TRANSMISSION FAILED. CHECK TELEGRAM CONFIG.")
 
 if "DEFCON 1" in threat_level: st.error(f"[CRITICAL ALERT] {selected_commodity} Threat Score is {threat_score}/100. Multiple macro indicators are flashing red.")
