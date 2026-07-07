@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 from groq import Groq
 import json
 import copy
+import urllib.parse # NEW: Fixes the broken OSINT URLs
 
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
@@ -37,6 +38,7 @@ def get_myr_rate():
 USD_TO_MYR = get_myr_rate()
 
 # --- THE MASSIVE COMMODITY DATABASE ---
+# Notice I simplified the "search" terms to be one word where possible to guarantee OSINT hits.
 BASE_COMMODITIES = {
     "🌾 Grains & Cereals": {
         "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155},
@@ -52,11 +54,11 @@ BASE_COMMODITIES = {
         "Orange Juice": {"ticker": "OJ=F", "search": "orange juice", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
     },
     "🥩 Meats & Livestock": {
-        "Live Cattle (Beef)": {"ticker": "LE=F", "search": "cattle beef", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
-        "Lean Hogs (Pork)": {"ticker": "HE=F", "search": "pork hogs", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
+        "Live Cattle (Beef)": {"ticker": "LE=F", "search": "beef", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
+        "Lean Hogs (Pork)": {"ticker": "HE=F", "search": "pork", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
     },
     "🥛 Dairy & Oils": {
-        "Class III Milk": {"ticker": "DC=F", "search": "milk dairy", "multiplier": 1.0, "unit": "Hundredweight", "kg_per_unit": 45.3592},
+        "Class III Milk": {"ticker": "DC=F", "search": "milk", "multiplier": 1.0, "unit": "Hundredweight", "kg_per_unit": 45.3592},
         "Soybean Oil": {"ticker": "ZL=F", "search": "soybean oil", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
     }
 }
@@ -65,7 +67,6 @@ BASE_COMMODITIES = {
 if 'custom_foods' not in st.session_state:
     st.session_state.custom_foods = {}
 
-# Merge base commodities with AI discovered ones into their proper categories
 COMMODITIES = copy.deepcopy(BASE_COMMODITIES)
 for cat, foods in st.session_state.custom_foods.items():
     if cat not in COMMODITIES:
@@ -92,8 +93,12 @@ def get_financial_data(ticker, multiplier):
 
 def get_news_data(search_term):
     try:
-        # Broadened search terms so OSINT is rarely empty
-        url = f"https://news.google.com/rss/search?q={search_term}+supply+OR+{search_term}+shortage+OR+{search_term}+market+OR+{search_term}+price&hl=en-US&gl=US&ceid=US:en"
+        # NEW: Bulletproof URL encoding. 
+        # Searches for: "milk" AND (shortage OR supply OR price OR export)
+        query = f'"{search_term}" (shortage OR supply OR price OR export)'
+        safe_query = urllib.parse.quote(query)
+        url = f"https://news.google.com/rss/search?q={safe_query}&hl=en-US&gl=US&ceid=US:en"
+        
         feed = feedparser.parse(url)
         articles = []
         total_sentiment = 0
@@ -101,7 +106,7 @@ def get_news_data(search_term):
             sentiment = sia.polarity_scores(entry.title)['compound']
             total_sentiment += sentiment
             articles.append({"Headline": entry.title, "Threat Score": sentiment})
-        avg_sentiment = total_sentiment / 10 if feed.entries else 0
+        avg_sentiment = total_sentiment / len(articles) if articles else 0
         return avg_sentiment, articles
     except Exception:
         return 0.0, []
@@ -110,7 +115,7 @@ def get_ai_brief(commodity, articles, price_change):
     if not groq_client:
         return "⚠️ AI Offline."
     if not articles:
-        return "⚠️ No recent news."
+        return "⚠️ No recent news to analyze."
     headlines = [art['Headline'] for art in articles[:5]]
     prompt = f"Act as a CIA intelligence analyst for food security. Target: {commodity}. Price change today: {price_change:.2f}%. Read these headlines: {headlines}. Write a 2-sentence tactical 'BLUF' summarizing the supply chain threat. Mention if the news justifies the price movement."
     try:
@@ -119,17 +124,19 @@ def get_ai_brief(commodity, articles, price_change):
     except Exception as e:
         return f"AI Error: {e}"
 
-def ai_auto_discover(food_name):
+def ai_auto_discover(food_name, existing_categories):
     if not groq_client:
         return None, "AI is offline. Cannot auto-discover."
+    
+    # NEW: Strictly forcing the AI to use existing categories
     prompt = f"""
     Find the global futures market data for the agricultural commodity: "{food_name}".
-    Return ONLY a valid JSON object. No markdown, no extra text.
+    Return ONLY a valid JSON object. No markdown.
     Format:
     {{
-        "category": "Categorize it into one of these exact strings: '🌾 Grains & Cereals', '☕ Softs & Cash Crops', '🥩 Meats & Livestock', '🥛 Dairy & Oils'. If it does not fit any of these, invent a new category name with a fitting emoji.",
+        "category": "MUST be one of these exact strings: {existing_categories}. ONLY invent a new category with an emoji if it is IMPOSSIBLE to fit into the existing ones (e.g. Lumber -> 🌲 Forestry).",
         "ticker": "The Yahoo Finance futures ticker (e.g. CPO=F for Palm Oil). If it doesn't trade on futures, return 'NONE'",
-        "search": "A short 1-2 word search term for news (e.g. 'palm oil')",
+        "search": "A short 1 word search term for news (e.g. 'palm' or 'lumber')",
         "unit": "The standard trading unit (e.g. Metric Ton, Pound, Bushel)",
         "kg_per_unit": The exact float number of kilograms in that unit (e.g. 1000.0 for Metric Ton),
         "is_cents": true if the price is quoted in US Cents, false if quoted in US Dollars
@@ -162,13 +169,14 @@ new_food_name = st.sidebar.text_input("Enter Target (e.g., Palm Oil, Lumber)")
 if st.sidebar.button("Auto-Detect & Deploy"):
     if new_food_name:
         with st.sidebar.status("AI is hunting for financial data..."):
-            ai_data, status = ai_auto_discover(new_food_name)
+            # Pass the existing categories to the AI so it doesn't make up random ones
+            current_cats = list(COMMODITIES.keys())
+            ai_data, status = ai_auto_discover(new_food_name, current_cats)
             
             if ai_data and ai_data.get("ticker") != "NONE":
                 multiplier = 0.01 if ai_data["is_cents"] else 1.0
                 cat = ai_data["category"]
                 
-                # Initialize category in session state if it doesn't exist
                 if cat not in st.session_state.custom_foods:
                     st.session_state.custom_foods[cat] = {}
                     
@@ -187,7 +195,6 @@ if st.sidebar.button("Auto-Detect & Deploy"):
 st.title("🌍 Global Food Supply Threat Matrix")
 st.markdown(f"**Live Forex Rate:** 1 USD = {USD_TO_MYR:.2f} MYR")
 
-# --- RESTORED FIELD MANUAL ---
 with st.expander("📖 FIELD MANUAL: How to read this intelligence dashboard", expanded=False):
     st.markdown("""
     #### 🔍 How to interpret the data:
@@ -210,6 +217,10 @@ price_per_kg_usd = price_usd / details["kg_per_unit"] if details["kg_per_unit"] 
 price_per_kg_myr = price_myr / details["kg_per_unit"] if details["kg_per_unit"] > 0 else 0
 
 st.header(f"🎯 Target Acquired: {selected_commodity}")
+
+# NEW: WARNING IF TICKER IS DEAD/INVALID (Fixes the 0.00 Lumber issue)
+if price_usd == 0.0:
+    st.error(f"⚠️ **INTELLIGENCE FAILURE:** Yahoo Finance returned no data for ticker **{details['ticker']}**. The market may be closed, the ticker may be delisted, or the AI guessed an invalid symbol.")
 
 # Top Row Metrics
 col1, col2, col3, col4 = st.columns(4)
@@ -249,7 +260,7 @@ with col_chart:
         fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("Financial data temporarily unavailable or market is closed.")
+        st.warning("Financial chart offline due to missing market data.")
 
 with col_news:
     st.markdown("### 📰 Live OSINT Chatter")
