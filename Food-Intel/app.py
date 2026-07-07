@@ -7,8 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from groq import Groq
 import json
-import copy
-import urllib.parse # NEW: Fixes the broken OSINT URLs
+import urllib.parse
 
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
@@ -38,7 +37,6 @@ def get_myr_rate():
 USD_TO_MYR = get_myr_rate()
 
 # --- THE MASSIVE COMMODITY DATABASE ---
-# Notice I simplified the "search" terms to be one word where possible to guarantee OSINT hits.
 BASE_COMMODITIES = {
     "🌾 Grains & Cereals": {
         "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155},
@@ -63,15 +61,26 @@ BASE_COMMODITIES = {
     }
 }
 
-# --- SESSION STATE FOR CUSTOM FOODS ---
+# --- MEMORY STATE FOR CUSTOM & DELETED FOODS ---
 if 'custom_foods' not in st.session_state:
     st.session_state.custom_foods = {}
+if 'deleted_foods' not in st.session_state:
+    st.session_state.deleted_foods = []
 
-COMMODITIES = copy.deepcopy(BASE_COMMODITIES)
+# Build the live database (excluding deleted items)
+COMMODITIES = {}
+for cat, foods in BASE_COMMODITIES.items():
+    for comm, data in foods.items():
+        if (cat, comm) not in st.session_state.deleted_foods:
+            if cat not in COMMODITIES:
+                COMMODITIES[cat] = {}
+            COMMODITIES[cat][comm] = data
+
 for cat, foods in st.session_state.custom_foods.items():
-    if cat not in COMMODITIES:
-        COMMODITIES[cat] = {}
-    COMMODITIES[cat].update(foods)
+    for comm, data in foods.items():
+        if cat not in COMMODITIES:
+            COMMODITIES[cat] = {}
+        COMMODITIES[cat][comm] = data
 
 # --- INTELLIGENCE FUNCTIONS ---
 def get_financial_data(ticker, multiplier):
@@ -93,8 +102,6 @@ def get_financial_data(ticker, multiplier):
 
 def get_news_data(search_term):
     try:
-        # NEW: Bulletproof URL encoding. 
-        # Searches for: "milk" AND (shortage OR supply OR price OR export)
         query = f'"{search_term}" (shortage OR supply OR price OR export)'
         safe_query = urllib.parse.quote(query)
         url = f"https://news.google.com/rss/search?q={safe_query}&hl=en-US&gl=US&ceid=US:en"
@@ -126,17 +133,15 @@ def get_ai_brief(commodity, articles, price_change):
 
 def ai_auto_discover(food_name, existing_categories):
     if not groq_client:
-        return None, "AI is offline. Cannot auto-discover."
-    
-    # NEW: Strictly forcing the AI to use existing categories
+        return None, "AI is offline."
     prompt = f"""
     Find the global futures market data for the agricultural commodity: "{food_name}".
     Return ONLY a valid JSON object. No markdown.
     Format:
     {{
-        "category": "MUST be one of these exact strings: {existing_categories}. ONLY invent a new category with an emoji if it is IMPOSSIBLE to fit into the existing ones (e.g. Lumber -> 🌲 Forestry).",
+        "category": "MUST be one of these exact strings: {existing_categories}. ONLY invent a new category with an emoji if it is IMPOSSIBLE to fit into the existing ones.",
         "ticker": "The Yahoo Finance futures ticker (e.g. CPO=F for Palm Oil). If it doesn't trade on futures, return 'NONE'",
-        "search": "A short 1 word search term for news (e.g. 'palm' or 'lumber')",
+        "search": "A short 1 word search term for news",
         "unit": "The standard trading unit (e.g. Metric Ton, Pound, Bushel)",
         "kg_per_unit": The exact float number of kilograms in that unit (e.g. 1000.0 for Metric Ton),
         "is_cents": true if the price is quoted in US Cents, false if quoted in US Dollars
@@ -155,9 +160,16 @@ def ai_auto_discover(food_name, existing_categories):
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/US_Department_of_Agriculture_seal.svg/1024px-US_Department_of_Agriculture_seal.svg.png", width=100)
 st.sidebar.title("Command Center")
 
-selected_category = st.sidebar.selectbox("1. Select Sector", list(COMMODITIES.keys()))
-selected_commodity = st.sidebar.selectbox("2. Select Target", list(COMMODITIES[selected_category].keys()))
-details = COMMODITIES[selected_category][selected_commodity]
+# Safety check: If user deleted absolutely everything
+if not COMMODITIES:
+    st.warning("🚨 All targets have been removed from the database.")
+    st.info("Use the AI Auto-Discover tool in the sidebar to add a new food commodity.")
+    selected_category = None
+    selected_commodity = None
+else:
+    selected_category = st.sidebar.selectbox("1. Select Sector", list(COMMODITIES.keys()))
+    selected_commodity = st.sidebar.selectbox("2. Select Target", list(COMMODITIES[selected_category].keys()))
+    details = COMMODITIES[selected_category][selected_commodity]
 
 st.sidebar.divider()
 
@@ -169,8 +181,7 @@ new_food_name = st.sidebar.text_input("Enter Target (e.g., Palm Oil, Lumber)")
 if st.sidebar.button("Auto-Detect & Deploy"):
     if new_food_name:
         with st.sidebar.status("AI is hunting for financial data..."):
-            # Pass the existing categories to the AI so it doesn't make up random ones
-            current_cats = list(COMMODITIES.keys())
+            current_cats = list(BASE_COMMODITIES.keys())
             ai_data, status = ai_auto_discover(new_food_name, current_cats)
             
             if ai_data and ai_data.get("ticker") != "NONE":
@@ -207,6 +218,10 @@ with st.expander("📖 FIELD MANUAL: How to read this intelligence dashboard", e
 
 st.divider()
 
+# Stop rendering the rest of the page if everything was deleted
+if not selected_commodity:
+    st.stop()
+
 # Fetch Data
 price_usd, price_change, trend_ma, price_history = get_financial_data(details["ticker"], details["multiplier"])
 avg_sentiment, news_articles = get_news_data(details["search"])
@@ -216,9 +231,24 @@ price_myr = price_usd * USD_TO_MYR
 price_per_kg_usd = price_usd / details["kg_per_unit"] if details["kg_per_unit"] > 0 else 0
 price_per_kg_myr = price_myr / details["kg_per_unit"] if details["kg_per_unit"] > 0 else 0
 
-st.header(f"🎯 Target Acquired: {selected_commodity}")
+# --- THE HEADER & SUBTLE DELETE BUTTON ---
+col_head1, col_head2 = st.columns([5, 1])
+with col_head1:
+    st.header(f"🎯 Target Acquired: {selected_commodity}")
+with col_head2:
+    st.write("") # Adds a tiny bit of spacing to align with the header
+    # 'tertiary' type makes it look like subtle text instead of a clunky button
+    if st.button("🗑️ Remove Target", type="tertiary", help="Remove this commodity from your dashboard"):
+        # Logic to delete the item
+        if selected_category in st.session_state.custom_foods and selected_commodity in st.session_state.custom_foods[selected_category]:
+            del st.session_state.custom_foods[selected_category][selected_commodity]
+            if not st.session_state.custom_foods[selected_category]:
+                del st.session_state.custom_foods[selected_category]
+        else:
+            st.session_state.deleted_foods.append((selected_category, selected_commodity))
+        st.rerun() # Refresh the page instantly
 
-# NEW: WARNING IF TICKER IS DEAD/INVALID (Fixes the 0.00 Lumber issue)
+# Warning if ticker is dead
 if price_usd == 0.0:
     st.error(f"⚠️ **INTELLIGENCE FAILURE:** Yahoo Finance returned no data for ticker **{details['ticker']}**. The market may be closed, the ticker may be delisted, or the AI guessed an invalid symbol.")
 
