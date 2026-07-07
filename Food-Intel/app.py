@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from groq import Groq
 import json
+import copy
 
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
@@ -64,9 +65,12 @@ BASE_COMMODITIES = {
 if 'custom_foods' not in st.session_state:
     st.session_state.custom_foods = {}
 
-COMMODITIES = BASE_COMMODITIES.copy()
-if st.session_state.custom_foods:
-    COMMODITIES["🤖 AI Discovered Targets"] = st.session_state.custom_foods
+# Merge base commodities with AI discovered ones into their proper categories
+COMMODITIES = copy.deepcopy(BASE_COMMODITIES)
+for cat, foods in st.session_state.custom_foods.items():
+    if cat not in COMMODITIES:
+        COMMODITIES[cat] = {}
+    COMMODITIES[cat].update(foods)
 
 # --- INTELLIGENCE FUNCTIONS ---
 def get_financial_data(ticker, multiplier):
@@ -88,7 +92,8 @@ def get_financial_data(ticker, multiplier):
 
 def get_news_data(search_term):
     try:
-        url = f"https://news.google.com/rss/search?q={search_term}+export+ban+OR+{search_term}+drought+OR+{search_term}+shortage+OR+{search_term}+disease&hl=en-US&gl=US&ceid=US:en"
+        # Broadened search terms so OSINT is rarely empty
+        url = f"https://news.google.com/rss/search?q={search_term}+supply+OR+{search_term}+shortage+OR+{search_term}+market+OR+{search_term}+price&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(url)
         articles = []
         total_sentiment = 0
@@ -122,7 +127,8 @@ def ai_auto_discover(food_name):
     Return ONLY a valid JSON object. No markdown, no extra text.
     Format:
     {{
-        "ticker": "The Yahoo Finance futures ticker (e.g. CPO=F for Palm Oil, ZR=F for Rice). If it doesn't trade on futures, return 'NONE'",
+        "category": "Categorize it into one of these exact strings: '🌾 Grains & Cereals', '☕ Softs & Cash Crops', '🥩 Meats & Livestock', '🥛 Dairy & Oils'. If it does not fit any of these, invent a new category name with a fitting emoji.",
+        "ticker": "The Yahoo Finance futures ticker (e.g. CPO=F for Palm Oil). If it doesn't trade on futures, return 'NONE'",
         "search": "A short 1-2 word search term for news (e.g. 'palm oil')",
         "unit": "The standard trading unit (e.g. Metric Ton, Pound, Bushel)",
         "kg_per_unit": The exact float number of kilograms in that unit (e.g. 1000.0 for Metric Ton),
@@ -132,7 +138,6 @@ def ai_auto_discover(food_name):
     try:
         chat = groq_client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="llama-3.3-70b-versatile")
         raw_response = chat.choices[0].message.content
-        # Clean up the response in case the AI added markdown
         clean_json = raw_response.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_json)
         return data, "Success"
@@ -149,10 +154,10 @@ details = COMMODITIES[selected_category][selected_commodity]
 
 st.sidebar.divider()
 
-# --- NEW FEATURE: AI AUTO-DISCOVER ---
+# --- AI AUTO-DISCOVER ---
 st.sidebar.markdown("### 🤖 AI Auto-Discover")
-st.sidebar.caption("Type a food. The AI will find the financial data and build a dashboard for it automatically.")
-new_food_name = st.sidebar.text_input("Enter Target (e.g., Palm Oil, Canola)")
+st.sidebar.caption("Type a food. The AI will find the financial data and categorize it automatically.")
+new_food_name = st.sidebar.text_input("Enter Target (e.g., Palm Oil, Lumber)")
 
 if st.sidebar.button("Auto-Detect & Deploy"):
     if new_food_name:
@@ -161,7 +166,13 @@ if st.sidebar.button("Auto-Detect & Deploy"):
             
             if ai_data and ai_data.get("ticker") != "NONE":
                 multiplier = 0.01 if ai_data["is_cents"] else 1.0
-                st.session_state.custom_foods[new_food_name.title()] = {
+                cat = ai_data["category"]
+                
+                # Initialize category in session state if it doesn't exist
+                if cat not in st.session_state.custom_foods:
+                    st.session_state.custom_foods[cat] = {}
+                    
+                st.session_state.custom_foods[cat][new_food_name.title()] = {
                     "ticker": ai_data["ticker"],
                     "search": ai_data["search"],
                     "multiplier": multiplier,
@@ -175,6 +186,19 @@ if st.sidebar.button("Auto-Detect & Deploy"):
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 st.markdown(f"**Live Forex Rate:** 1 USD = {USD_TO_MYR:.2f} MYR")
+
+# --- RESTORED FIELD MANUAL ---
+with st.expander("📖 FIELD MANUAL: How to read this intelligence dashboard", expanded=False):
+    st.markdown("""
+    #### 🔍 How to interpret the data:
+    * **Command Center (Left):** Use the sidebar to navigate through dozens of global food sectors. You can also use the AI to discover and add new foods.
+    * **Price (USD & MYR):** Live global futures prices. We also calculate the standardized price per Kilogram so you can compare different commodities.
+    * **OSINT Sentiment Score:** We scrape global news for threat keywords. `-1.0` is extreme danger, `+1.0` is perfectly safe.
+    * **System Status:** Triggers **🔴 HIGH RISK** if the price jumps > 2% OR news sentiment drops below -0.25.
+    * **🤖 AI Analyst (BLUF):** *'Bottom Line Up Front'*. Our AI reads the latest news headlines and cross-references them with today's price action to give you a 2-sentence tactical summary.
+    """)
+
+st.divider()
 
 # Fetch Data
 price_usd, price_change, trend_ma, price_history = get_financial_data(details["ticker"], details["multiplier"])
@@ -234,3 +258,5 @@ with col_news:
         def color_threat(val):
             return f'color: {"#ff4b4b" if val < 0 else "#00cc96"}'
         st.dataframe(df.style.map(color_threat, subset=['Threat Score']), hide_index=True)
+    else:
+        st.info("No immediate threats detected in global news chatter.")
