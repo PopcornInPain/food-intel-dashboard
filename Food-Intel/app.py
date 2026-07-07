@@ -202,15 +202,6 @@ else:
 details = COMMODITIES[selected_category][selected_commodity]
 is_osint_only = details.get("ticker") == "NONE"
 
-# --- DATA SANITIZER (Fixes the Map Crash Bug) ---
-# This ensures that even if old memory has "None" for GPS, it gets converted to 0.0 safely.
-safe_lat = details.get("lat", 0.0)
-safe_lon = details.get("lon", 0.0)
-if safe_lat is None: safe_lat = 0.0
-if safe_lon is None: safe_lon = 0.0
-details["lat"] = safe_lat
-details["lon"] = safe_lon
-
 st.sidebar.divider()
 st.sidebar.markdown("### 🚢 Macro Inputs (Logistics)")
 st.sidebar.metric("Global Fertilizer (NTR)", f"${FERT_PRICE:.2f}", f"{FERT_PCT:.2f}%")
@@ -229,78 +220,89 @@ if st.sidebar.button("Auto-Detect & Deploy"):
                 if cat not in st.session_state.custom_foods: st.session_state.custom_foods[cat] = {}
                 st.session_state.custom_foods[cat][new_food_name.title()] = {
                     "ticker": ai_data["ticker"], "search": ai_data["search"], "multiplier": 0.01 if ai_data.get("is_cents") else 1.0,
-                    "unit": ai_data["unit"], "kg_per_unit": ai_data["kg_per_unit"], 
-                    "lat": ai_data.get("lat", 0.0), "lon": ai_data.get("lon", 0.0), "region": ai_data.get("region", "Unknown")
+                    "unit": ai_data["unit"], "kg_per_unit": ai_data["kg_per_unit"], "lat": ai_data.get("lat", 0.0), "lon": ai_data.get("lon", 0.0), "region": ai_data.get("region", "Unknown")
                 }
                 st.rerun()
 
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 
-# --- BULLETPROOF 3D WAR ROOM MAP ---
-map_data = []
-for cat, foods in COMMODITIES.items():
-    for name, d in foods.items():
-        # Sanitize loop data
-        l_lat = d.get("lat", 0.0)
-        l_lon = d.get("lon", 0.0)
-        if l_lat is None: l_lat = 0.0
-        if l_lon is None: l_lon = 0.0
-        
-        if l_lat != 0.0 or l_lon != 0.0: 
-            map_data.append({"Name": name, "Lat": l_lat, "Lon": l_lon})
+# --- IRONCLAD DATA SANITIZER FOR MAP ---
+try:
+    center_lat = float(details.get("lat", 0.0))
+    center_lon = float(details.get("lon", 0.0))
+except:
+    center_lat = 0.0
+    center_lon = 0.0
 
-if map_data:
-    df_map = pd.DataFrame(map_data)
-    fig_map = go.Figure()
-    
-    # Inactive global targets (Subdued Cyan)
-    fig_map.add_trace(go.Scattergeo(
-        lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'],
-        mode='markers', marker=dict(size=6, color='#00E5FF', opacity=0.4),
-        hoverinfo='text', name="Global Targets"
-    ))
-    
-    # Active Target (Alert Crimson Radar Ping)
-    if safe_lat != 0.0 or safe_lon != 0.0:
+# Clamp coordinates mathematically to prevent Plotly ValueErrors
+center_lat = max(-89.9, min(89.9, center_lat))
+center_lon = max(-179.9, min(179.9, center_lon))
+
+# --- BULLETPROOF 3D WAR ROOM MAP ---
+try:
+    map_data = []
+    for cat, foods in COMMODITIES.items():
+        for name, d in foods.items():
+            try:
+                l_lat = float(d.get("lat", 0.0))
+                l_lon = float(d.get("lon", 0.0))
+                l_lat = max(-89.9, min(89.9, l_lat))
+                l_lon = max(-179.9, min(179.9, l_lon))
+                if l_lat != 0.0 or l_lon != 0.0: 
+                    map_data.append({"Name": name, "Lat": l_lat, "Lon": l_lon})
+            except: pass
+
+    if map_data:
+        df_map = pd.DataFrame(map_data)
+        fig_map = go.Figure()
+        
+        # Inactive global targets
         fig_map.add_trace(go.Scattergeo(
-            lon=[safe_lon], lat=[safe_lat],
-            mode='markers', marker=dict(size=35, color='#FF3366', opacity=0.2),
-            hoverinfo='none', name="Radar"
+            lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'],
+            mode='markers', marker=dict(size=6, color='#00E5FF', opacity=0.4),
+            hoverinfo='text', name="Global Targets"
         ))
-        fig_map.add_trace(go.Scattergeo(
-            lon=[safe_lon], lat=[safe_lat], text=[f"ACTIVE TARGET: {selected_commodity}"],
-            mode='markers', marker=dict(size=10, color='#FF3366', line=dict(width=2, color='#FFFFFF')),
-            hoverinfo='text', name="Active Target"
-        ))
-    
-    # Safe Projection Dictionary (Prevents the ValueError)
-    fig_map.update_geos(
-        projection=dict(
-            type="orthographic",
-            rotation=dict(lon=float(safe_lon), lat=float(safe_lat), roll=0)
-        ),
-        showcoastlines=True, coastcolor="#1A1E24",
-        showland=True, landcolor="#12161D",
-        showocean=True, oceancolor="#0B0E14",
-        showcountries=True, countrycolor="#1A1E24",
-        showframe=False,
-        bgcolor="rgba(0,0,0,0)"
-    )
-    
-    fig_map.update_layout(
-        height=600,
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        showlegend=False
-    )
-    st.plotly_chart(fig_map, use_container_width=True)
+        
+        # Active Target
+        if center_lat != 0.0 or center_lon != 0.0:
+            fig_map.add_trace(go.Scattergeo(
+                lon=[center_lon], lat=[center_lat],
+                mode='markers', marker=dict(size=35, color='#FF3366', opacity=0.2),
+                hoverinfo='none', name="Radar"
+            ))
+            fig_map.add_trace(go.Scattergeo(
+                lon=[center_lon], lat=[center_lat], text=[f"ACTIVE TARGET: {selected_commodity}"],
+                mode='markers', marker=dict(size=10, color='#FF3366', line=dict(width=2, color='#FFFFFF')),
+                hoverinfo='text', name="Active Target"
+            ))
+        
+        # Extremely safe layout update method
+        fig_map.update_layout(
+            geo=dict(
+                projection_type="orthographic",
+                projection_rotation=dict(lon=center_lon, lat=center_lat, roll=0),
+                showcoastlines=True, coastcolor="#1A1E24",
+                showland=True, landcolor="#12161D",
+                showocean=True, oceancolor="#0B0E14",
+                showcountries=True, countrycolor="#1A1E24",
+                showframe=False,
+                bgcolor="rgba(0,0,0,0)"
+            ),
+            height=600,
+            margin=dict(l=0, r=0, t=0, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False
+        )
+        st.plotly_chart(fig_map, use_container_width=True)
+except Exception as e:
+    st.error("📡 Global Map Radar is temporarily offline. Awaiting coordinate recalibration.")
 
 # Fetch Data
 price_usd, price_change, trend_ma, rsi, price_history = get_financial_data(details["ticker"], details.get("multiplier", 1.0))
 avg_sentiment, news_articles = get_news_data(details["search"])
-weather = get_weather_data(safe_lat, safe_lon)
+weather = get_weather_data(center_lat, center_lon)
 
 price_myr = price_usd * USD_TO_MYR
 kg_per_unit = details.get("kg_per_unit", 1.0)
@@ -372,7 +374,7 @@ else:
     with col2: st.metric(label="Master Threat Score", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
     with col3: st.empty()
 
-if weather and safe_lat != 0.0: st.info(f"🌦️ **CLIMATE INTEL ({details['region']}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
+if weather and center_lat != 0.0: st.info(f"🌦️ **CLIMATE INTEL ({details.get('region', 'Unknown')}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
 
 # AI Brief
 st.markdown("### 🤖 AI Analyst Brief (BLUF)")
