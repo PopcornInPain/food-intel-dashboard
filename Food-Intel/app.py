@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 from groq import Groq
 
 # --- SETUP & CONFIG ---
-st.set_page_config(page_title="Food Supply Intel", layout="wide")
+st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
 
 @st.cache_resource
 def setup_nltk():
@@ -34,14 +34,31 @@ def get_myr_rate():
 
 USD_TO_MYR = get_myr_rate()
 
-# --- EXPANDED COMMODITY DATABASE ---
+# --- THE MASSIVE COMMODITY DATABASE ---
+# Categorized for the new Sidebar UI. You can add infinite items here.
 COMMODITIES = {
-    "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel"},
-    "Rice": {"ticker": "ZR=F", "search": "rice", "multiplier": 0.01, "unit": "Hundredweight"},
-    "Cocoa": {"ticker": "CC=F", "search": "cocoa", "multiplier": 1.0, "unit": "Metric Ton"},
-    "Sugar": {"ticker": "SB=F", "search": "sugar", "multiplier": 0.01, "unit": "Pound"},
-    "Corn": {"ticker": "ZC=F", "search": "corn", "multiplier": 0.01, "unit": "Bushel"},
-    "Soybeans": {"ticker": "ZS=F", "search": "soybeans", "multiplier": 0.01, "unit": "Bushel"}
+    "🌾 Grains & Cereals": {
+        "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel"},
+        "Corn": {"ticker": "ZC=F", "search": "corn", "multiplier": 0.01, "unit": "Bushel"},
+        "Soybeans": {"ticker": "ZS=F", "search": "soybeans", "multiplier": 0.01, "unit": "Bushel"},
+        "Rough Rice": {"ticker": "ZR=F", "search": "rice", "multiplier": 0.01, "unit": "Hundredweight"},
+        "Oats": {"ticker": "ZO=F", "search": "oats", "multiplier": 0.01, "unit": "Bushel"},
+    },
+    "☕ Softs & Cash Crops": {
+        "Cocoa": {"ticker": "CC=F", "search": "cocoa", "multiplier": 1.0, "unit": "Metric Ton"},
+        "Coffee": {"ticker": "KC=F", "search": "coffee", "multiplier": 0.01, "unit": "Pound"},
+        "Sugar": {"ticker": "SB=F", "search": "sugar", "multiplier": 0.01, "unit": "Pound"},
+        "Orange Juice": {"ticker": "OJ=F", "search": "orange juice", "multiplier": 0.01, "unit": "Pound"},
+    },
+    "🥩 Meats & Livestock": {
+        "Live Cattle (Beef)": {"ticker": "LE=F", "search": "cattle beef", "multiplier": 0.01, "unit": "Pound"},
+        "Lean Hogs (Pork)": {"ticker": "HE=F", "search": "pork hogs", "multiplier": 0.01, "unit": "Pound"},
+        "Feeder Cattle": {"ticker": "GF=F", "search": "cattle", "multiplier": 0.01, "unit": "Pound"},
+    },
+    "🥛 Dairy & Oils": {
+        "Class III Milk": {"ticker": "DC=F", "search": "milk dairy", "multiplier": 1.0, "unit": "Hundredweight"},
+        "Soybean Oil": {"ticker": "ZL=F", "search": "soybean oil", "multiplier": 0.01, "unit": "Pound"},
+    }
 }
 
 # --- INTELLIGENCE FUNCTIONS ---
@@ -70,7 +87,7 @@ def get_financial_data(ticker, multiplier):
 
 def get_news_data(search_term):
     try:
-        url = f"https://news.google.com/rss/search?q={search_term}+export+ban+OR+{search_term}+drought+OR+{search_term}+shortage&hl=en-US&gl=US&ceid=US:en"
+        url = f"https://news.google.com/rss/search?q={search_term}+export+ban+OR+{search_term}+drought+OR+{search_term}+shortage+OR+{search_term}+disease&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(url)
         
         articles = []
@@ -100,7 +117,6 @@ def get_ai_brief(commodity, articles, price_change):
     Write a 2-sentence tactical 'BLUF' (Bottom Line Up Front) summarizing the supply chain threat. 
     Mention if the news justifies the price movement.
     """
-    
     try:
         chat = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
@@ -110,91 +126,84 @@ def get_ai_brief(commodity, articles, price_change):
     except Exception as e:
         return f"AI Error: {e}"
 
-# --- DASHBOARD UI ---
+# --- SIDEBAR COMMAND CENTER ---
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/US_Department_of_Agriculture_seal.svg/1024px-US_Department_of_Agriculture_seal.svg.png", width=100)
+st.sidebar.title("Command Center")
+st.sidebar.markdown("Select an intelligence target below:")
+
+# Dropdowns for Category and Commodity
+selected_category = st.sidebar.selectbox("1. Select Sector", list(COMMODITIES.keys()))
+selected_commodity = st.sidebar.selectbox("2. Select Target", list(COMMODITIES[selected_category].keys()))
+
+# Get details for the selected commodity
+details = COMMODITIES[selected_category][selected_commodity]
+
+st.sidebar.divider()
+st.sidebar.info("💡 **Pro Tip:** You can add infinite commodities to the code database by finding their Yahoo Finance Ticker.")
+
+# --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 st.markdown(f"**Live Forex Rate:** 1 USD = {USD_TO_MYR:.2f} MYR")
 
-# --- NEW: FIELD MANUAL / TUTORIAL ---
 with st.expander("📖 FIELD MANUAL: How to read this intelligence dashboard", expanded=False):
     st.markdown("""
-    ### Welcome to the Food Supply Threat Intelligence System
-    This dashboard acts as an early warning radar for global food security. It tracks financial markets (FININT) and global news (OSINT) in real-time to detect supply chain disruptions before they hit the grocery store.
-
     #### 🔍 How to interpret the data:
-    * **Target Commodities:** Click the tabs below (Wheat, Rice, Cocoa, etc.) to switch between different food supply chains.
-    * **Price (USD & MYR):** Live global futures prices. The MYR price is calculated dynamically using live Forex data.
-    * **OSINT Sentiment Score:** We scrape global news for threat keywords (drought, export ban, shortage, strike). 
-        * `+1.0` = Perfectly safe / positive news.
-        * `0.0` = Neutral chatter.
-        * `-1.0` = Extreme threat / negative news.
-    * **System Status:** The system automatically triggers **🔴 HIGH RISK** if the price suddenly jumps more than 2% in a single day, OR if the news sentiment drops below -0.25.
-    * **🤖 AI Analyst (BLUF):** *'Bottom Line Up Front'*. Our AI reads the latest news headlines and cross-references them with today's price action to give you a 2-sentence tactical summary of the current threat landscape.
-    * **📈 FININT Chart:** The candlestick chart shows daily price movements over the last 90 days. The **orange line** is the 14-day trend (Moving Average). If the current price breaks far above the orange line, a panic-buying event or supply shock may be occurring.
+    * **Command Center (Left):** Use the sidebar to navigate through dozens of global food sectors.
+    * **OSINT Sentiment Score:** We scrape global news for threat keywords. `-1.0` is extreme danger, `+1.0` is perfectly safe.
+    * **System Status:** Triggers **🔴 HIGH RISK** if the price jumps > 2% OR news sentiment drops below -0.25.
+    * **🤖 AI Analyst:** Cross-references news with price action for a tactical summary.
     """)
 
 st.divider()
 
-# Create dynamic tabs
-tab_names = [f"🎯 {name}" for name in COMMODITIES.keys()]
-tabs = st.tabs(tab_names)
+# --- TARGET ANALYSIS ---
+st.header(f"🎯 Target Acquired: {selected_commodity}")
 
-for tab, (commodity_name, details) in zip(tabs, COMMODITIES.items()):
-    with tab:
-        st.header(f"Target: {commodity_name}")
-        
-        price_usd, price_change, trend_ma, price_history = get_financial_data(details["ticker"], details["multiplier"])
-        avg_sentiment, news_articles = get_news_data(details["search"])
-        
-        price_myr = price_usd * USD_TO_MYR
-        
-        # Top Row Metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric(label=f"Price ({details['unit']})", 
-                      value=f"${price_usd:.2f}", 
-                      delta=f"{price_change:.2f}%")
-        with col2:
-            st.metric(label="Price in MYR", 
-                      value=f"RM {price_myr:.2f}")
-        with col3:
-            st.metric(label="OSINT Sentiment", 
-                      value=f"{avg_sentiment:.2f}", 
-                      delta="Negative = Threat", delta_color="inverse")
-        with col4:
-            threat_level = "🔴 HIGH RISK" if price_change > 2.0 or avg_sentiment < -0.25 else "🟢 NORMAL"
-            st.metric(label="System Status", value=threat_level)
-            
-        # AI Analyst Brief
-        st.markdown("### 🤖 AI Analyst Brief (BLUF)")
-        with st.spinner('Decrypting intel...'):
-            ai_brief = get_ai_brief(commodity_name, news_articles, price_change)
-            st.info(ai_brief)
+# Fetch Data
+price_usd, price_change, trend_ma, price_history = get_financial_data(details["ticker"], details["multiplier"])
+avg_sentiment, news_articles = get_news_data(details["search"])
+price_myr = price_usd * USD_TO_MYR
 
-        # Charts and News Layout
-        col_chart, col_news = st.columns([2, 1])
-        
-        with col_chart:
-            st.markdown("### 📈 90-Day Price Action & Trend (FININT)")
-            if not price_history.empty:
-                fig = go.Figure()
-                # Candlestick chart
-                fig.add_trace(go.Candlestick(x=price_history.index,
-                            open=price_history['Open'] * details["multiplier"], 
-                            high=price_history['High'] * details["multiplier"],
-                            low=price_history['Low'] * details["multiplier"], 
-                            close=price_history['Close'] * details["multiplier"],
-                            name="Price"))
-                # Moving Average Trendline
-                fig.add_trace(go.Scatter(x=price_history.index, y=price_history['50_MA'] * details["multiplier"], 
-                                         line=dict(color='orange', width=2), name="14-Day Trend"))
-                
-                fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False)
-                st.plotly_chart(fig, use_container_width=True)
+# Top Row Metrics
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric(label=f"Price ({details['unit']})", value=f"${price_usd:.2f}", delta=f"{price_change:.2f}%")
+with col2:
+    st.metric(label="Price in MYR", value=f"RM {price_myr:.2f}")
+with col3:
+    st.metric(label="OSINT Sentiment", value=f"{avg_sentiment:.2f}", delta="Negative = Threat", delta_color="inverse")
+with col4:
+    threat_level = "🔴 HIGH RISK" if price_change > 2.0 or avg_sentiment < -0.25 else "🟢 NORMAL"
+    st.metric(label="System Status", value=threat_level)
+    
+# AI Analyst Brief
+st.markdown("### 🤖 AI Analyst Brief (BLUF)")
+with st.spinner('Decrypting intel...'):
+    ai_brief = get_ai_brief(selected_commodity, news_articles, price_change)
+    st.info(ai_brief)
 
-        with col_news:
-            st.markdown("### 📰 Live OSINT Chatter")
-            if news_articles:
-                df = pd.DataFrame(news_articles)
-                def color_threat(val):
-                    return f'color: {"#ff4b4b" if val < 0 else "#00cc96"}'
-                st.dataframe(df.style.map(color_threat, subset=['Threat Score']), hide_index=True)
+# Charts and News Layout
+col_chart, col_news = st.columns([2, 1])
+
+with col_chart:
+    st.markdown("### 📈 90-Day Price Action & Trend (FININT)")
+    if not price_history.empty:
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(x=price_history.index,
+                    open=price_history['Open'] * details["multiplier"], 
+                    high=price_history['High'] * details["multiplier"],
+                    low=price_history['Low'] * details["multiplier"], 
+                    close=price_history['Close'] * details["multiplier"],
+                    name="Price"))
+        fig.add_trace(go.Scatter(x=price_history.index, y=price_history['50_MA'] * details["multiplier"], 
+                                 line=dict(color='orange', width=2), name="14-Day Trend"))
+        fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+with col_news:
+    st.markdown("### 📰 Live OSINT Chatter")
+    if news_articles:
+        df = pd.DataFrame(news_articles)
+        def color_threat(val):
+            return f'color: {"#ff4b4b" if val < 0 else "#00cc96"}'
+        st.dataframe(df.style.map(color_threat, subset=['Threat Score']), hide_index=True)
