@@ -6,6 +6,7 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 import pandas as pd
 import plotly.graph_objects as go
 from groq import Groq
+import json
 
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
@@ -34,8 +35,7 @@ def get_myr_rate():
 
 USD_TO_MYR = get_myr_rate()
 
-# --- THE MASSIVE COMMODITY DATABASE (With kg conversions) ---
-# kg_per_unit calculates the exact weight so we can standardize the price to $/kg
+# --- THE MASSIVE COMMODITY DATABASE ---
 BASE_COMMODITIES = {
     "🌾 Grains & Cereals": {
         "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155},
@@ -64,10 +64,9 @@ BASE_COMMODITIES = {
 if 'custom_foods' not in st.session_state:
     st.session_state.custom_foods = {}
 
-# Merge base commodities with custom ones
 COMMODITIES = BASE_COMMODITIES.copy()
 if st.session_state.custom_foods:
-    COMMODITIES["🛠️ Custom Added Targets"] = st.session_state.custom_foods
+    COMMODITIES["🤖 AI Discovered Targets"] = st.session_state.custom_foods
 
 # --- INTELLIGENCE FUNCTIONS ---
 def get_financial_data(ticker, multiplier):
@@ -108,20 +107,37 @@ def get_ai_brief(commodity, articles, price_change):
     if not articles:
         return "⚠️ No recent news."
     headlines = [art['Headline'] for art in articles[:5]]
-    prompt = f"""
-    Act as a CIA intelligence analyst for food security. Target: {commodity}. Price change today: {price_change:.2f}%.
-    Read these headlines: {headlines}
-    Write a 2-sentence tactical 'BLUF' (Bottom Line Up Front) summarizing the supply chain threat. 
-    Mention if the news justifies the price movement.
-    """
+    prompt = f"Act as a CIA intelligence analyst for food security. Target: {commodity}. Price change today: {price_change:.2f}%. Read these headlines: {headlines}. Write a 2-sentence tactical 'BLUF' summarizing the supply chain threat. Mention if the news justifies the price movement."
     try:
-        chat = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile",
-        )
+        chat = groq_client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="llama-3.3-70b-versatile")
         return chat.choices[0].message.content
     except Exception as e:
         return f"AI Error: {e}"
+
+def ai_auto_discover(food_name):
+    if not groq_client:
+        return None, "AI is offline. Cannot auto-discover."
+    prompt = f"""
+    Find the global futures market data for the agricultural commodity: "{food_name}".
+    Return ONLY a valid JSON object. No markdown, no extra text.
+    Format:
+    {{
+        "ticker": "The Yahoo Finance futures ticker (e.g. CPO=F for Palm Oil, ZR=F for Rice). If it doesn't trade on futures, return 'NONE'",
+        "search": "A short 1-2 word search term for news (e.g. 'palm oil')",
+        "unit": "The standard trading unit (e.g. Metric Ton, Pound, Bushel)",
+        "kg_per_unit": The exact float number of kilograms in that unit (e.g. 1000.0 for Metric Ton),
+        "is_cents": true if the price is quoted in US Cents, false if quoted in US Dollars
+    }}
+    """
+    try:
+        chat = groq_client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="llama-3.3-70b-versatile")
+        raw_response = chat.choices[0].message.content
+        # Clean up the response in case the AI added markdown
+        clean_json = raw_response.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean_json)
+        return data, "Success"
+    except Exception as e:
+        return None, f"Failed to parse AI response: {e}"
 
 # --- SIDEBAR COMMAND CENTER ---
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/US_Department_of_Agriculture_seal.svg/1024px-US_Department_of_Agriculture_seal.svg.png", width=100)
@@ -133,26 +149,28 @@ details = COMMODITIES[selected_category][selected_commodity]
 
 st.sidebar.divider()
 
-# --- NEW FEATURE: ADD CUSTOM FOOD UI ---
-st.sidebar.markdown("### ➕ Add Custom Food")
-with st.sidebar.expander("Deploy new tracking target"):
-    new_name = st.text_input("Food Name (e.g., Palm Oil)")
-    new_ticker = st.text_input("Yahoo Ticker (e.g., CPO=F)")
-    new_search = st.text_input("News Search Term (e.g., palm oil)")
-    new_unit = st.text_input("Unit Type (e.g., Metric Ton)")
-    new_kg = st.number_input("How many Kg in 1 Unit?", value=1000.0)
-    
-    # Simple logic to determine multiplier (Cents vs Dollars)
-    is_cents = st.checkbox("Is this priced in US Cents? (Check for grains/softs)")
-    new_multiplier = 0.01 if is_cents else 1.0
+# --- NEW FEATURE: AI AUTO-DISCOVER ---
+st.sidebar.markdown("### 🤖 AI Auto-Discover")
+st.sidebar.caption("Type a food. The AI will find the financial data and build a dashboard for it automatically.")
+new_food_name = st.sidebar.text_input("Enter Target (e.g., Palm Oil, Canola)")
 
-    if st.button("Initialize Target"):
-        if new_name and new_ticker:
-            st.session_state.custom_foods[new_name] = {
-                "ticker": new_ticker, "search": new_search, 
-                "multiplier": new_multiplier, "unit": new_unit, "kg_per_unit": new_kg
-            }
-            st.rerun() # Refresh the app to show the new food
+if st.sidebar.button("Auto-Detect & Deploy"):
+    if new_food_name:
+        with st.sidebar.status("AI is hunting for financial data..."):
+            ai_data, status = ai_auto_discover(new_food_name)
+            
+            if ai_data and ai_data.get("ticker") != "NONE":
+                multiplier = 0.01 if ai_data["is_cents"] else 1.0
+                st.session_state.custom_foods[new_food_name.title()] = {
+                    "ticker": ai_data["ticker"],
+                    "search": ai_data["search"],
+                    "multiplier": multiplier,
+                    "unit": ai_data["unit"],
+                    "kg_per_unit": ai_data["kg_per_unit"]
+                }
+                st.rerun()
+            else:
+                st.sidebar.error("Could not find a global futures market for this item.")
 
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
@@ -163,8 +181,7 @@ price_usd, price_change, trend_ma, price_history = get_financial_data(details["t
 avg_sentiment, news_articles = get_news_data(details["search"])
 price_myr = price_usd * USD_TO_MYR
 
-# --- NEW FEATURE: STANDARDIZED KG MATH ---
-# Calculate the exact price per 1 Kilogram using our database
+# Standardized KG Math
 price_per_kg_usd = price_usd / details["kg_per_unit"] if details["kg_per_unit"] > 0 else 0
 price_per_kg_myr = price_myr / details["kg_per_unit"] if details["kg_per_unit"] > 0 else 0
 
@@ -174,10 +191,10 @@ st.header(f"🎯 Target Acquired: {selected_commodity}")
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric(label=f"Market Price ({details['unit']})", value=f"${price_usd:.2f}", delta=f"{price_change:.2f}%")
-    st.caption(f"Standardized: **${price_per_kg_usd:.4f} / kg**") # Shows standardized USD
+    st.caption(f"Standardized: **${price_per_kg_usd:.4f} / kg**")
 with col2:
     st.metric(label="Price in MYR", value=f"RM {price_myr:.2f}")
-    st.caption(f"Standardized: **RM {price_per_kg_myr:.4f} / kg**") # Shows standardized MYR
+    st.caption(f"Standardized: **RM {price_per_kg_myr:.4f} / kg**")
 with col3:
     st.metric(label="OSINT Sentiment", value=f"{avg_sentiment:.2f}", delta="Negative = Threat", delta_color="inverse")
 with col4:
@@ -207,6 +224,8 @@ with col_chart:
                                  line=dict(color='orange', width=2), name="14-Day Trend"))
         fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False)
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Financial data temporarily unavailable or market is closed.")
 
 with col_news:
     st.markdown("### 📰 Live OSINT Chatter")
