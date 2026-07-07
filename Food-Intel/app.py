@@ -15,10 +15,9 @@ from datetime import datetime
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
 
-# --- CUSTOM CSS (FIXED FOR LIGHT MODE COMPATIBILITY) ---
+# --- CUSTOM CSS (CLASSY, MINIMALIST TERMINAL THEME) ---
 st.markdown("""
 <style>
-    /* Sleek Metric Cards - Forced dark background with forced light text */
     div[data-testid="stMetric"] {
         background-color: #12161D !important;
         border-left: 3px solid #00E5FF;
@@ -26,12 +25,10 @@ st.markdown("""
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.4);
     }
-    /* Force metric text to be visible even in Light Mode */
     div[data-testid="stMetric"] label, 
     div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
         color: #E0E6ED !important; 
     }
-    /* Clean Typography */
     h1, h2, h3 { 
         font-weight: 300 !important; 
         letter-spacing: 1px; 
@@ -203,15 +200,11 @@ def ai_auto_discover(food_name, existing_categories):
     except: return None, "Failed"
 
 # --- SIDEBAR COMMAND CENTER ---
-# NEW: Sleek SVG Wireframe Globe Icon
+# RESTORED: Original Bracket Logo
 st.sidebar.markdown("""
-<div style="text-align: center; padding: 10px; margin-bottom: 20px;">
-    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="2" y1="12" x2="22" y2="12"></line>
-        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-    </svg>
-    <h3 style="color: #E0E6ED; margin: 10px 0 0 0; font-size: 1.2rem; letter-spacing: 2px;">SYS.CORE</h3>
+<div style="text-align: center; padding: 15px; border: 1px solid rgba(0, 229, 255, 0.3); border-radius: 4px; margin-bottom: 20px; background-color: rgba(0, 229, 255, 0.05);">
+    <h2 style="color: #00E5FF; margin: 0; font-size: 1.4rem; letter-spacing: 3px; font-family: 'Courier New', monospace;">[ SYS.CORE ]</h2>
+    <div style="font-size: 0.75rem; color: #888; letter-spacing: 1px; margin-top: 5px;">GLOBAL THREAT MATRIX</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -245,13 +238,13 @@ center_lat = float(max(-89.9, min(89.9, center_lat)))
 center_lon = float(max(-179.9, min(179.9, center_lon)))
 
 st.sidebar.divider()
-st.sidebar.markdown("### /// MACRO LOGISTICS")
+st.sidebar.markdown("### ⛙ MACRO LOGISTICS")
 st.sidebar.metric("GLOBAL FERTILIZER (NTR)", f"${FERT_PRICE:.2f}", f"{FERT_PCT:.2f}%")
 st.sidebar.metric("DRY BULK SHIPPING (BDRY)", f"${SHIP_PRICE:.2f}", f"{SHIP_PCT:.2f}%")
 
 st.sidebar.divider()
 
-st.sidebar.markdown("### [+] AUTO-DISCOVER")
+st.sidebar.markdown("### ⌖ AUTO-DISCOVER")
 st.sidebar.caption("> INITIATE AI TARGET ACQUISITION")
 new_food_name = st.sidebar.text_input("ENTER TARGET NAME:")
 
@@ -269,7 +262,7 @@ if st.sidebar.button("DEPLOY TRACKER"):
                 st.rerun()
 
 # --- MAIN DASHBOARD UI ---
-st.title("/// GLOBAL FOOD SUPPLY THREAT MATRIX")
+st.title("❖ GLOBAL FOOD SUPPLY THREAT MATRIX")
 
 # --- THE IRONCLAD MAP RENDERER ---
 try:
@@ -311,7 +304,6 @@ try:
                 hoverinfo='text', name="Active Target"
             ))
         
-        # FIXED: Removed bgcolor from update_geos, moved to update_layout
         fig_map.update_geos(
             projection=dict(
                 type="orthographic",
@@ -321,7 +313,8 @@ try:
             showland=True, landcolor="#12161D",
             showocean=True, oceancolor="#0B0E14",
             showcountries=True, countrycolor="#1A1E24",
-            showframe=False
+            showframe=False,
+            bgcolor="rgba(0,0,0,0)"
         )
         
         fig_map.update_layout(
@@ -329,7 +322,7 @@ try:
             margin=dict(l=0, r=0, t=0, b=0),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            geo_bgcolor="rgba(0,0,0,0)", # FIXED PROPERTY
+            geo_bgcolor="rgba(0,0,0,0)",
             showlegend=False
         )
         st.plotly_chart(fig_map, use_container_width=True)
@@ -351,7 +344,7 @@ threat_score, threat_level = calculate_master_threat(price_change, avg_sentiment
 
 # Header & Delete
 col_head1, col_head2 = st.columns([5, 1])
-with col_head1: st.header(f"TARGET ACQUIRED: {selected_commodity}")
+with col_head1: st.header(f"⌖ TARGET ACQUIRED: {selected_commodity}")
 with col_head2:
     st.write("")
     if st.button("REMOVE TARGET", type="tertiary"):
@@ -411,10 +404,10 @@ else:
     with col2: st.metric(label="MASTER THREAT SCORE", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
     with col3: st.empty()
 
-if weather and center_lat != 0.0: st.info(f"[+] CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
+if weather and center_lat != 0.0: st.info(f"⌖ CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
 
 # AI Brief
-st.markdown("### >_ AI TACTICAL ANALYSIS")
+st.markdown("### ⎔ AI TACTICAL ANALYSIS")
 with st.spinner('DECRYPTING INTEL...'):
     ai_summary = get_ai_brief(selected_commodity, news_articles, price_change, rsi, FERT_PCT, weather, threat_score, is_osint_only)
     st.info(ai_summary)
@@ -423,21 +416,21 @@ with st.spinner('DECRYPTING INTEL...'):
 col_chart, col_news = st.columns([2, 1])
 with col_chart:
     if not is_osint_only and not price_history.empty:
-        st.markdown("### /// 90-DAY TECHNICAL ANALYSIS")
+        st.markdown("### ◱ 90-DAY TECHNICAL ANALYSIS")
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=price_history.index, open=price_history['Open']*details["multiplier"], high=price_history['High']*details["multiplier"], low=price_history['Low']*details["multiplier"], close=price_history['Close']*details["multiplier"], name="Price"))
         fig.add_trace(go.Scatter(x=price_history.index, y=price_history['50_MA']*details["multiplier"], line=dict(color='#00E5FF', width=1.5), name="50-Day MA"))
         fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
 with col_news:
-    st.markdown("### /// LIVE OSINT CHATTER")
+    st.markdown("### ▧ LIVE OSINT CHATTER")
     if news_articles: st.dataframe(pd.DataFrame(news_articles).style.map(lambda val: f'color: {"#FF3366" if val < 0 else "#00E5FF"}', subset=['Threat Score']), hide_index=True)
     else: st.info("NO IMMEDIATE THREATS DETECTED.")
 
 st.divider()
 
 # --- AI INTERROGATION MODE ---
-st.markdown(f"### >_ AI INTERROGATION TERMINAL: {selected_commodity}")
+st.markdown(f"### ⎚ AI INTERROGATION TERMINAL: {selected_commodity}")
 st.caption("QUERY THE SYSTEM REGARDING HISTORICAL TRENDS OR LIVE DATA.")
 
 if selected_commodity not in st.session_state.chat_history:
