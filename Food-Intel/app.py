@@ -130,8 +130,9 @@ def get_news_data(search_term):
 def calculate_master_threat(price_pct, sentiment, rsi, fert_pct, ship_pct, weather, is_osint_only):
     score = 0
     if is_osint_only:
-        if sentiment < -0.2: score += 50
-        if sentiment < -0.5: score += 50
+        # NEW: Dynamic sliding scale for OSINT-Only mode
+        if sentiment < 0:
+            score = min(100, int(abs(sentiment) * 100))
     else:
         if price_pct > 1.5: score += 15
         if price_pct > 3.0: score += 15
@@ -153,7 +154,6 @@ def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, thre
     headlines = [art['Headline'] for art in articles[:5]] if articles else ["No news."]
     weather_txt = f"Temp: {weather['temp']}C, Rain: {weather['rain']}mm" if weather else "N/A"
     
-    # NEW: The AI now has Situational Awareness of OSINT-Only mode
     if is_osint_only:
         prompt = f"""
         Act as a CIA analyst for food security. Target: {commodity}. Master Threat Score: {threat_score}/100.
@@ -202,8 +202,18 @@ st.sidebar.title("Command Center")
 
 if not COMMODITIES: st.stop()
 
-selected_category = st.sidebar.selectbox("1. Select Sector", list(COMMODITIES.keys()))
-selected_commodity = st.sidebar.selectbox("2. Select Target", list(COMMODITIES[selected_category].keys()))
+# --- NEW: QUICK SEARCH NAVIGATION ---
+search_mode = st.sidebar.radio("Navigation Mode", ["Browse by Sector", "Search All Targets"])
+
+if search_mode == "Browse by Sector":
+    selected_category = st.sidebar.selectbox("1. Select Sector", list(COMMODITIES.keys()))
+    selected_commodity = st.sidebar.selectbox("2. Select Target", list(COMMODITIES[selected_category].keys()))
+else:
+    # Build a flat dictionary of all foods for the search bar
+    flat_foods = {f"{food} ({cat})": (cat, food) for cat, foods in COMMODITIES.items() for food in foods.keys()}
+    search_selection = st.sidebar.selectbox("🔍 Search Target", sorted(list(flat_foods.keys())))
+    selected_category, selected_commodity = flat_foods[search_selection]
+
 details = COMMODITIES[selected_category][selected_commodity]
 is_osint_only = details.get("ticker") == "NONE"
 
@@ -334,7 +344,7 @@ else:
 
 if weather: st.info(f"🌦️ **CLIMATE INTEL ({details['region']}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
 
-# AI Brief (Now passing is_osint_only to give the AI situational awareness)
+# AI Brief
 st.markdown("### 🤖 AI Analyst Brief (BLUF)")
 with st.spinner('Decrypting intel...'):
     st.info(get_ai_brief(selected_commodity, news_articles, price_change, rsi, FERT_PCT, weather, threat_score, is_osint_only))
