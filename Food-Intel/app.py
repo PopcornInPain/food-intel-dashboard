@@ -5,7 +5,6 @@ import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from groq import Groq
 import json
 import urllib.parse
@@ -15,6 +14,31 @@ from datetime import datetime
 
 # --- SETUP & CONFIG ---
 st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sidebar_state="expanded")
+
+# --- CUSTOM CSS (CIA INTEL / GLASSMORPHIC THEME) ---
+st.markdown("""
+<style>
+    /* Sleek Metric Cards */
+    div[data-testid="stMetric"] {
+        background-color: rgba(18, 22, 29, 0.7);
+        border: 1px solid rgba(0, 229, 255, 0.15);
+        border-radius: 6px;
+        padding: 15px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    /* Clean up headers */
+    h1, h2, h3 {
+        font-weight: 300 !important;
+        letter-spacing: 0.5px;
+    }
+    /* Subtle Expander styling */
+    .streamlit-expanderHeader {
+        background-color: rgba(18, 22, 29, 0.5) !important;
+        border-radius: 4px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_resource
 def setup_nltk():
@@ -212,7 +236,7 @@ if st.sidebar.button("Auto-Detect & Deploy"):
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 
-# --- NEW: WAR ROOM GLOBAL MAP ---
+# --- HIGH-CLASS 3D WAR ROOM MAP (NETFLIX HERO BANNER) ---
 map_data = []
 for cat, foods in COMMODITIES.items():
     for name, d in foods.items():
@@ -221,13 +245,48 @@ for cat, foods in COMMODITIES.items():
 if map_data:
     df_map = pd.DataFrame(map_data)
     fig_map = go.Figure()
-    # Plot all commodities as small blue dots
-    fig_map.add_trace(go.Scattergeo(lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'], mode='markers', marker=dict(size=6, color='#00cc96', opacity=0.6), name="Global Targets"))
-    # Plot selected commodity as giant red crosshair
-    if details.get("lat") != 0.0:
-        fig_map.add_trace(go.Scattergeo(lon=[details["lon"]], lat=[details["lat"]], text=[f"ACTIVE TARGET: {selected_commodity}"], mode='markers', marker=dict(size=18, color='#ff4b4b', symbol='cross-thin', line=dict(width=3, color='#ff4b4b')), name="Active Target"))
     
-    fig_map.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='#111111', landcolor='#1e1e1e', showocean=True, oceancolor='#0a0a0a', showland=True), margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', height=300)
+    # Inactive global targets (Subdued Cyan)
+    fig_map.add_trace(go.Scattergeo(
+        lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'],
+        mode='markers', marker=dict(size=6, color='#00E5FF', opacity=0.4),
+        hoverinfo='text', name="Global Targets"
+    ))
+    
+    # Active Target (Alert Crimson Radar Ping)
+    if details.get("lat") != 0.0:
+        # Radar Halo
+        fig_map.add_trace(go.Scattergeo(
+            lon=[details["lon"]], lat=[details["lat"]],
+            mode='markers', marker=dict(size=35, color='#FF3366', opacity=0.2),
+            hoverinfo='none', name="Radar"
+        ))
+        # Solid Core
+        fig_map.add_trace(go.Scattergeo(
+            lon=[details["lon"]], lat=[details["lat"]], text=[f"ACTIVE TARGET: {selected_commodity}"],
+            mode='markers', marker=dict(size=10, color='#FF3366', line=dict(width=2, color='#FFFFFF')),
+            hoverinfo='text', name="Active Target"
+        ))
+    
+    # Sleek Dark Matte Globe Configuration
+    fig_map.update_geos(
+        projection_type="orthographic",
+        projection_rotation=dict(lon=details.get("lon", 0), lat=details.get("lat", 20), roll=0), # Auto-centers on target
+        showcoastlines=True, coastcolor="#1A1E24",
+        showland=True, landcolor="#12161D",
+        showocean=True, oceancolor="#0B0E14",
+        showcountries=True, countrycolor="#1A1E24",
+        showframe=False,
+        bgcolor="rgba(0,0,0,0)"
+    )
+    
+    fig_map.update_layout(
+        height=600, # Massive Hero Banner Size
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False
+    )
     st.plotly_chart(fig_map, use_container_width=True)
 
 # Fetch Data
@@ -254,7 +313,7 @@ with col_head2:
         else: st.session_state.deleted_foods.append((selected_category, selected_commodity))
         st.rerun()
 
-# --- NEW: EXECUTIVE REPORT GENERATOR ---
+# --- EXECUTIVE REPORT GENERATOR ---
 report_text = f"""CLASSIFIED EXECUTIVE BRIEFING
 TARGET: {selected_commodity}
 DATE: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -282,8 +341,8 @@ with col_btn2:
         if send_telegram_alert(f"🚨 *THREAT ALERT: {selected_commodity}*\nStatus: {threat_level}\nScore: {threat_score}/100\nPrice Change: {price_change:.2f}%"): st.success("Alert sent!")
         else: st.error("Telegram not configured.")
 
-if "DEFCON 1" in threat_level: st.error(f"🚨 **CRITICAL ALERT:** {selected_commodity} Threat Score is {threat_score}/100.")
-elif "DEFCON 2" in threat_level: st.warning(f"⚠️ **ELEVATED RISK:** {selected_commodity} Threat Score is {threat_score}/100.")
+if "DEFCON 1" in threat_level: st.error(f"🚨 **CRITICAL ALERT:** {selected_commodity} Threat Score is {threat_score}/100. Multiple macro indicators (Price, Weather, OSINT, or Logistics) are flashing red.")
+elif "DEFCON 2" in threat_level: st.warning(f"⚠️ **ELEVATED RISK:** {selected_commodity} Threat Score is {threat_score}/100. Anomalies detected in supply chain inputs.")
 
 if is_osint_only: st.warning("🕵️ **OSINT-ONLY MODE:** Tracking via Global News Sentiment only.")
 
@@ -330,7 +389,7 @@ with col_news:
 
 st.divider()
 
-# --- NEW: AI INTERROGATION MODE ---
+# --- AI INTERROGATION MODE ---
 st.markdown(f"### 🕵️ Interrogate the AI about {selected_commodity}")
 st.caption("Ask specific questions about the data, news, or historical trends of this commodity.")
 
