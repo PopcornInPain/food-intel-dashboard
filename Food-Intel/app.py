@@ -18,7 +18,6 @@ st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sideba
 # --- CUSTOM CSS (CLASSY, MINIMALIST TERMINAL THEME) ---
 st.markdown("""
 <style>
-    /* Sleek Metric Cards - No borders, just frosted glass */
     div[data-testid="stMetric"] {
         background-color: rgba(18, 22, 29, 0.85);
         border-left: 3px solid #00E5FF;
@@ -26,20 +25,17 @@ st.markdown("""
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.4);
     }
-    /* Clean Typography */
     h1, h2, h3 { 
         font-weight: 300 !important; 
         letter-spacing: 1px; 
         text-transform: uppercase;
         font-family: 'Courier New', Courier, monospace;
     }
-    /* Subtle Expander styling */
     .streamlit-expanderHeader { 
         background-color: rgba(18, 22, 29, 0.5) !important; 
         border-radius: 2px; 
         font-family: 'Courier New', Courier, monospace;
     }
-    /* Terminal text for captions */
     .stCaption {
         font-family: 'Courier New', Courier, monospace;
         color: #00E5FF !important;
@@ -83,7 +79,7 @@ def get_macro_data():
 
 USD_TO_MYR, FERT_PRICE, FERT_PCT, SHIP_PRICE, SHIP_PCT = get_macro_data()
 
-# --- THE COMMODITY DATABASE (EMOJIS SCRUBBED) ---
+# --- THE COMMODITY DATABASE ---
 BASE_COMMODITIES = {
     "GRAINS & CEREALS": {
         "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155, "lat": 38.5, "lon": -98.0, "region": "Kansas, USA"},
@@ -179,7 +175,7 @@ def calculate_master_threat(price_pct, sentiment, rsi, fert_pct, ship_pct, weath
     return score, "DEFCON 3 [NORMAL]"
 
 def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, threat_score, is_osint_only):
-    if not groq_client: return "SYSTEM ERROR: AI CORE OFFLINE."
+    if not groq_client: return "SYS_ERR: AI CORE OFFLINE."
     headlines = [art['Headline'] for art in articles[:5]] if articles else ["No news."]
     weather_txt = f"Temp: {weather['temp']}C, Rain: {weather['rain']}mm" if weather else "N/A"
     
@@ -190,7 +186,7 @@ def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, thre
         prompt += f"Price Change: {price_change:.2f}%. RSI: {rsi:.1f}. Fertilizer Change: {fert_pct:.2f}%. Weather: {weather_txt}. Headlines: {headlines}. Write 2 tactical sentences. Tone: Cold, professional, military intelligence."
         
     try: return groq_client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="llama-3.3-70b-versatile").choices[0].message.content
-    except: return "SYSTEM ERROR: AI CORE UNRESPONSIVE."
+    except: return "SYS_ERR: AI CORE UNRESPONSIVE."
 
 def ai_auto_discover(food_name, existing_categories):
     if not groq_client: return None, "AI is offline."
@@ -200,7 +196,13 @@ def ai_auto_discover(food_name, existing_categories):
     except: return None, "Failed"
 
 # --- SIDEBAR COMMAND CENTER ---
-st.sidebar.title("/// COMMAND CENTER")
+# NEW CLASSY UI ICON (CSS Generated, no images to break)
+st.sidebar.markdown("""
+<div style="text-align: center; padding: 15px; border: 1px solid rgba(0, 229, 255, 0.3); border-radius: 4px; margin-bottom: 20px; background-color: rgba(0, 229, 255, 0.05);">
+    <h2 style="color: #00E5FF; margin: 0; font-size: 1.4rem; letter-spacing: 3px; font-family: 'Courier New', monospace;">[ SYS.CORE ]</h2>
+    <div style="font-size: 0.75rem; color: #888; letter-spacing: 1px; margin-top: 5px;">GLOBAL THREAT MATRIX</div>
+</div>
+""", unsafe_allow_html=True)
 
 if not COMMODITIES: st.stop()
 
@@ -220,17 +222,19 @@ is_osint_only = details.get("ticker") == "NONE"
 # --- BULLETPROOF DATA SANITIZER FOR MAP ---
 try:
     center_lat = float(details.get("lat", 0.0))
-    center_lon = float(details.get("lon", 0.0))
-except (ValueError, TypeError):
-    center_lat, center_lon = 0.0, 0.0
+    if pd.isna(center_lat): center_lat = 0.0
+except: center_lat = 0.0
 
-if np.isnan(center_lat): center_lat = 0.0
-if np.isnan(center_lon): center_lon = 0.0
-center_lat = max(-89.9, min(89.9, center_lat))
-center_lon = max(-179.9, min(179.9, center_lon))
+try:
+    center_lon = float(details.get("lon", 0.0))
+    if pd.isna(center_lon): center_lon = 0.0
+except: center_lon = 0.0
+
+center_lat = float(max(-89.9, min(89.9, center_lat)))
+center_lon = float(max(-179.9, min(179.9, center_lon)))
 
 st.sidebar.divider()
-st.sidebar.markdown("### MACRO LOGISTICS")
+st.sidebar.markdown("### /// MACRO LOGISTICS")
 st.sidebar.metric("GLOBAL FERTILIZER (NTR)", f"${FERT_PRICE:.2f}", f"{FERT_PCT:.2f}%")
 st.sidebar.metric("DRY BULK SHIPPING (BDRY)", f"${SHIP_PRICE:.2f}", f"{SHIP_PCT:.2f}%")
 
@@ -256,64 +260,70 @@ if st.sidebar.button("DEPLOY TRACKER"):
 # --- MAIN DASHBOARD UI ---
 st.title("/// GLOBAL FOOD SUPPLY THREAT MATRIX")
 
-# --- BULLETPROOF 3D WAR ROOM MAP ---
-map_data = []
-for cat, foods in COMMODITIES.items():
-    for name, d in foods.items():
-        try:
-            l_lat = float(d.get("lat", 0.0))
-            l_lon = float(d.get("lon", 0.0))
-            if np.isnan(l_lat): l_lat = 0.0
-            if np.isnan(l_lon): l_lon = 0.0
-            l_lat = max(-89.9, min(89.9, l_lat))
-            l_lon = max(-179.9, min(179.9, l_lon))
-            if l_lat != 0.0 or l_lon != 0.0: 
-                map_data.append({"Name": name, "Lat": l_lat, "Lon": l_lon})
-        except: pass
+# --- THE IRONCLAD MAP RENDERER ---
+try:
+    map_data = []
+    for cat, foods in COMMODITIES.items():
+        for name, d in foods.items():
+            try:
+                l_lat = float(d.get("lat", 0.0))
+                l_lon = float(d.get("lon", 0.0))
+                if pd.isna(l_lat): l_lat = 0.0
+                if pd.isna(l_lon): l_lon = 0.0
+                l_lat = float(max(-89.9, min(89.9, l_lat)))
+                l_lon = float(max(-179.9, min(179.9, l_lon)))
+                if l_lat != 0.0 or l_lon != 0.0: 
+                    map_data.append({"Name": name, "Lat": l_lat, "Lon": l_lon})
+            except: pass
 
-if map_data:
-    df_map = pd.DataFrame(map_data)
-    fig_map = go.Figure()
-    
-    # Inactive global targets
-    fig_map.add_trace(go.Scattergeo(
-        lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'],
-        mode='markers', marker=dict(size=5, color='#00E5FF', opacity=0.3),
-        hoverinfo='text', name="Global Targets"
-    ))
-    
-    # Active Target
-    if center_lat != 0.0 or center_lon != 0.0:
+    if map_data:
+        df_map = pd.DataFrame(map_data)
+        fig_map = go.Figure()
+        
+        # Inactive global targets
         fig_map.add_trace(go.Scattergeo(
-            lon=[center_lon], lat=[center_lat],
-            mode='markers', marker=dict(size=40, color='#FF3366', opacity=0.15),
-            hoverinfo='none', name="Radar"
+            lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'],
+            mode='markers', marker=dict(size=5, color='#00E5FF', opacity=0.3),
+            hoverinfo='text', name="Global Targets"
         ))
-        fig_map.add_trace(go.Scattergeo(
-            lon=[center_lon], lat=[center_lat], text=[f"ACTIVE TARGET: {selected_commodity}"],
-            mode='markers', marker=dict(size=8, color='#FF3366', line=dict(width=1, color='#FFFFFF')),
-            hoverinfo='text', name="Active Target"
-        ))
-    
-    fig_map.update_geos(
-        projection_type="orthographic",
-        projection_rotation=dict(lon=center_lon, lat=center_lat, roll=0),
-        showcoastlines=True, coastcolor="#1A1E24",
-        showland=True, landcolor="#12161D",
-        showocean=True, oceancolor="#0B0E14",
-        showcountries=True, countrycolor="#1A1E24",
-        showframe=False,
-        bgcolor="rgba(0,0,0,0)"
-    )
-    
-    fig_map.update_layout(
-        height=550,
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        showlegend=False
-    )
-    st.plotly_chart(fig_map, use_container_width=True)
+        
+        # Active Target
+        if center_lat != 0.0 or center_lon != 0.0:
+            fig_map.add_trace(go.Scattergeo(
+                lon=[center_lon], lat=[center_lat],
+                mode='markers', marker=dict(size=40, color='#FF3366', opacity=0.15),
+                hoverinfo='none', name="Radar"
+            ))
+            fig_map.add_trace(go.Scattergeo(
+                lon=[center_lon], lat=[center_lat], text=[f"ACTIVE TARGET: {selected_commodity}"],
+                mode='markers', marker=dict(size=8, color='#FF3366', line=dict(width=1, color='#FFFFFF')),
+                hoverinfo='text', name="Active Target"
+            ))
+        
+        # Safe nested dictionary projection to prevent ValueError
+        fig_map.update_geos(
+            projection=dict(
+                type="orthographic",
+                rotation=dict(lon=center_lon, lat=center_lat, roll=0)
+            ),
+            showcoastlines=True, coastcolor="#1A1E24",
+            showland=True, landcolor="#12161D",
+            showocean=True, oceancolor="#0B0E14",
+            showcountries=True, countrycolor="#1A1E24",
+            showframe=False,
+            bgcolor="rgba(0,0,0,0)"
+        )
+        
+        fig_map.update_layout(
+            height=550,
+            margin=dict(l=0, r=0, t=0, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False
+        )
+        st.plotly_chart(fig_map, use_container_width=True)
+except Exception as e:
+    st.error("[SYS_ERR] GEOSPATIAL RENDER ENGINE OFFLINE. AWAITING COORDINATE RECALIBRATION.")
 
 # Fetch Data
 price_usd, price_change, trend_ma, rsi, price_history = get_financial_data(details["ticker"], details.get("multiplier", 1.0))
@@ -364,13 +374,13 @@ with col_btn1:
     st.download_button(label="EXPORT BRIEFING", data=report_text, file_name=f"{selected_commodity}_Briefing_{datetime.now().strftime('%Y%m%d')}.txt", mime="text/plain")
 with col_btn2:
     if st.button("PUSH ALERT TO SECURE CHANNEL"):
-        if send_telegram_alert(f"🚨 *THREAT ALERT: {selected_commodity}*\nStatus: {threat_level}\nScore: {threat_score}/100\nPrice Change: {price_change:.2f}%"): st.success("TRANSMISSION SUCCESSFUL.")
+        if send_telegram_alert(f"[THREAT ALERT: {selected_commodity}]\nStatus: {threat_level}\nScore: {threat_score}/100\nPrice Change: {price_change:.2f}%"): st.success("TRANSMISSION SUCCESSFUL.")
         else: st.error("TRANSMISSION FAILED. CHECK TELEGRAM CONFIG.")
 
-if "DEFCON 1" in threat_level: st.error(f"CRITICAL ALERT: {selected_commodity} Threat Score is {threat_score}/100. Multiple macro indicators are flashing red.")
-elif "DEFCON 2" in threat_level: st.warning(f"ELEVATED RISK: {selected_commodity} Threat Score is {threat_score}/100. Anomalies detected in supply chain inputs.")
+if "DEFCON 1" in threat_level: st.error(f"[CRITICAL ALERT] {selected_commodity} Threat Score is {threat_score}/100. Multiple macro indicators are flashing red.")
+elif "DEFCON 2" in threat_level: st.warning(f"[ELEVATED RISK] {selected_commodity} Threat Score is {threat_score}/100. Anomalies detected in supply chain inputs.")
 
-if is_osint_only: st.warning("OSINT-ONLY MODE: Tracking via Global News Sentiment only. Financial data unavailable.")
+if is_osint_only: st.warning("[OSINT-ONLY MODE] Tracking via Global News Sentiment only. Financial data unavailable.")
 
 # Metrics Row
 if not is_osint_only:
@@ -390,10 +400,10 @@ else:
     with col2: st.metric(label="MASTER THREAT SCORE", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
     with col3: st.empty()
 
-if weather and center_lat != 0.0: st.info(f"CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
+if weather and center_lat != 0.0: st.info(f"[+] CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
 
 # AI Brief
-st.markdown("### AI TACTICAL ANALYSIS")
+st.markdown("### >_ AI TACTICAL ANALYSIS")
 with st.spinner('DECRYPTING INTEL...'):
     ai_summary = get_ai_brief(selected_commodity, news_articles, price_change, rsi, FERT_PCT, weather, threat_score, is_osint_only)
     st.info(ai_summary)
@@ -402,14 +412,14 @@ with st.spinner('DECRYPTING INTEL...'):
 col_chart, col_news = st.columns([2, 1])
 with col_chart:
     if not is_osint_only and not price_history.empty:
-        st.markdown("### 90-DAY TECHNICAL ANALYSIS")
+        st.markdown("### /// 90-DAY TECHNICAL ANALYSIS")
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=price_history.index, open=price_history['Open']*details["multiplier"], high=price_history['High']*details["multiplier"], low=price_history['Low']*details["multiplier"], close=price_history['Close']*details["multiplier"], name="Price"))
         fig.add_trace(go.Scatter(x=price_history.index, y=price_history['50_MA']*details["multiplier"], line=dict(color='#00E5FF', width=1.5), name="50-Day MA"))
         fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
 with col_news:
-    st.markdown("### LIVE OSINT CHATTER")
+    st.markdown("### /// LIVE OSINT CHATTER")
     if news_articles: st.dataframe(pd.DataFrame(news_articles).style.map(lambda val: f'color: {"#FF3366" if val < 0 else "#00E5FF"}', subset=['Threat Score']), hide_index=True)
     else: st.info("NO IMMEDIATE THREATS DETECTED.")
 
@@ -438,4 +448,4 @@ if prompt := st.chat_input(f"ENTER QUERY..."):
                 st.markdown(response)
                 st.session_state.chat_history[selected_commodity].append({"role": "assistant", "content": response})
             except:
-                st.error("SYSTEM ERROR: AI CORE UNRESPONSIVE.")
+                st.error("SYS_ERR: AI CORE UNRESPONSIVE.")
