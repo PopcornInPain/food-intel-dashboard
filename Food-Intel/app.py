@@ -24,20 +24,17 @@ except Exception:
     groq_client = None
 
 # --- LIVE FOREX (USD to MYR) ---
-@st.cache_data(ttl=3600) # Cache for 1 hour to speed up app
+@st.cache_data(ttl=3600)
 def get_myr_rate():
     try:
         myr_data = yf.Ticker("MYR=X").history(period="1d")
         return myr_data['Close'].iloc[-1]
     except:
-        return 4.70 # Fallback estimate if forex API glitches
+        return 4.70
 
 USD_TO_MYR = get_myr_rate()
 
 # --- EXPANDED COMMODITY DATABASE ---
-# Note: Grains (Wheat/Corn/Soy/Rice) are usually priced in US Cents per bushel/cwt. 
-# Sugar is US Cents/lb. Cocoa is USD/Metric Ton. 
-# We use a multiplier to normalize everything to standard USD for accurate MYR conversion.
 COMMODITIES = {
     "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel"},
     "Rice": {"ticker": "ZR=F", "search": "rice", "multiplier": 0.01, "unit": "Hundredweight"},
@@ -51,18 +48,16 @@ COMMODITIES = {
 def get_financial_data(ticker, multiplier):
     try:
         data = yf.Ticker(ticker)
-        hist = data.history(period="3mo") # Pulled 3 months for better trend analysis
+        hist = data.history(period="3mo")
         
         if hist.empty or len(hist) < 2:
             return 0.0, 0.0, 0.0, pd.DataFrame()
             
-        # Calculate Moving Average for better accuracy
         hist['50_MA'] = hist['Close'].rolling(window=14).mean() 
         
         raw_today = hist['Close'].iloc[-1]
         raw_yesterday = hist['Close'].iloc[-2]
         
-        # Convert to actual USD
         today_usd = raw_today * multiplier
         yesterday_usd = raw_yesterday * multiplier
         
@@ -118,9 +113,28 @@ def get_ai_brief(commodity, articles, price_change):
 # --- DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 st.markdown(f"**Live Forex Rate:** 1 USD = {USD_TO_MYR:.2f} MYR")
+
+# --- NEW: FIELD MANUAL / TUTORIAL ---
+with st.expander("📖 FIELD MANUAL: How to read this intelligence dashboard", expanded=False):
+    st.markdown("""
+    ### Welcome to the Food Supply Threat Intelligence System
+    This dashboard acts as an early warning radar for global food security. It tracks financial markets (FININT) and global news (OSINT) in real-time to detect supply chain disruptions before they hit the grocery store.
+
+    #### 🔍 How to interpret the data:
+    * **Target Commodities:** Click the tabs below (Wheat, Rice, Cocoa, etc.) to switch between different food supply chains.
+    * **Price (USD & MYR):** Live global futures prices. The MYR price is calculated dynamically using live Forex data.
+    * **OSINT Sentiment Score:** We scrape global news for threat keywords (drought, export ban, shortage, strike). 
+        * `+1.0` = Perfectly safe / positive news.
+        * `0.0` = Neutral chatter.
+        * `-1.0` = Extreme threat / negative news.
+    * **System Status:** The system automatically triggers **🔴 HIGH RISK** if the price suddenly jumps more than 2% in a single day, OR if the news sentiment drops below -0.25.
+    * **🤖 AI Analyst (BLUF):** *'Bottom Line Up Front'*. Our AI reads the latest news headlines and cross-references them with today's price action to give you a 2-sentence tactical summary of the current threat landscape.
+    * **📈 FININT Chart:** The candlestick chart shows daily price movements over the last 90 days. The **orange line** is the 14-day trend (Moving Average). If the current price breaks far above the orange line, a panic-buying event or supply shock may be occurring.
+    """)
+
 st.divider()
 
-# Create dynamic tabs based on our expanded database
+# Create dynamic tabs
 tab_names = [f"🎯 {name}" for name in COMMODITIES.keys()]
 tabs = st.tabs(tab_names)
 
