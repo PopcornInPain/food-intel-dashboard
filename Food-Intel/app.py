@@ -57,18 +57,28 @@ def get_macro_data():
 
 USD_TO_MYR, FERT_PRICE, FERT_PCT, SHIP_PRICE, SHIP_PCT = get_macro_data()
 
-# --- THE COMMODITY DATABASE ---
+# --- THE COMMODITY DATABASE (Now with 100% GPS Coverage) ---
 BASE_COMMODITIES = {
     "🌾 Grains & Cereals": {
         "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155, "lat": 38.5, "lon": -98.0, "region": "Kansas, USA"},
         "Corn": {"ticker": "ZC=F", "search": "corn", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 25.4012, "lat": 42.0, "lon": -93.0, "region": "Iowa, USA"},
         "Soybeans": {"ticker": "ZS=F", "search": "soybeans", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155, "lat": -12.9, "lon": -56.0, "region": "Mato Grosso, Brazil"},
         "Rough Rice": {"ticker": "ZR=F", "search": "rice", "multiplier": 0.01, "unit": "Hundredweight", "kg_per_unit": 45.3592, "lat": 30.9, "lon": 75.8, "region": "Punjab, India"},
+        "Oats": {"ticker": "ZO=F", "search": "oats", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 14.515, "lat": 50.5, "lon": -104.6, "region": "Saskatchewan, Canada"},
     },
     "☕ Softs & Cash Crops": {
         "Cocoa": {"ticker": "CC=F", "search": "cocoa", "multiplier": 1.0, "unit": "Metric Ton", "kg_per_unit": 1000.0, "lat": 7.5, "lon": -5.5, "region": "Ivory Coast, Africa"},
         "Coffee": {"ticker": "KC=F", "search": "coffee", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": -19.9, "lon": -43.9, "region": "Minas Gerais, Brazil"},
         "Sugar": {"ticker": "SB=F", "search": "sugar", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": -22.9, "lon": -47.0, "region": "São Paulo, Brazil"},
+        "Orange Juice": {"ticker": "OJ=F", "search": "orange juice", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": 28.5, "lon": -81.3, "region": "Florida, USA"},
+    },
+    "🥩 Meats & Livestock": {
+        "Live Cattle (Beef)": {"ticker": "LE=F", "search": "beef", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": 31.9, "lon": -99.9, "region": "Texas, USA"},
+        "Lean Hogs (Pork)": {"ticker": "HE=F", "search": "pork", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": 42.0, "lon": -93.0, "region": "Iowa, USA"},
+    },
+    "🥛 Dairy & Oils": {
+        "Class III Milk": {"ticker": "DC=F", "search": "milk", "multiplier": 1.0, "unit": "Hundredweight", "kg_per_unit": 45.3592, "lat": 44.5, "lon": -90.0, "region": "Wisconsin, USA"},
+        "Soybean Oil": {"ticker": "ZL=F", "search": "soybean oil", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592, "lat": -12.9, "lon": -56.0, "region": "Mato Grosso, Brazil"},
     }
 }
 
@@ -130,7 +140,6 @@ def get_news_data(search_term):
 def calculate_master_threat(price_pct, sentiment, rsi, fert_pct, ship_pct, weather, is_osint_only):
     score = 0
     if is_osint_only:
-        # NEW: Dynamic sliding scale for OSINT-Only mode
         if sentiment < 0:
             score = min(100, int(abs(sentiment) * 100))
     else:
@@ -159,8 +168,8 @@ def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, thre
         Act as a CIA analyst for food security. Target: {commodity}. Master Threat Score: {threat_score}/100.
         CRITICAL INSTRUCTION: This commodity is NOT traded on global financial markets. You have ZERO price data and ZERO RSI data. 
         DO NOT mention "stable prices", "0.00% change", or "neutral RSI". 
-        DATA INPUTS: Global Fertilizer Change: {fert_pct:.2f}%. Headlines: {headlines}. 
-        Write a 2-sentence tactical 'BLUF' summarizing the threat based EXCLUSIVELY on the news headlines and fertilizer data.
+        DATA INPUTS: Global Fertilizer Change: {fert_pct:.2f}%. Weather at Chokepoint: {weather_txt}. Headlines: {headlines}. 
+        Write a 2-sentence tactical 'BLUF' summarizing the threat based EXCLUSIVELY on the news headlines, weather, and fertilizer data.
         """
     else:
         prompt = f"""
@@ -186,7 +195,10 @@ def ai_auto_discover(food_name, existing_categories):
         "search": "1 word search term for news",
         "unit": "Trading unit (e.g. Metric Ton). If NONE, put 'Kg'",
         "kg_per_unit": Float kg in unit. If NONE, put 1.0,
-        "is_cents": true if US Cents, false if USD. If NONE, put false
+        "is_cents": true if US Cents, false if USD. If NONE, put false,
+        "lat": Float latitude of the primary global producing region (e.g. -12.9 for Brazil Soybeans). If unknown, put 0.0,
+        "lon": Float longitude of that region (e.g. -56.0). If unknown, put 0.0,
+        "region": String name of the region (e.g. "Mato Grosso, Brazil"). If unknown, put "Unknown"
     }}
     """
     try:
@@ -202,14 +214,12 @@ st.sidebar.title("Command Center")
 
 if not COMMODITIES: st.stop()
 
-# --- NEW: QUICK SEARCH NAVIGATION ---
 search_mode = st.sidebar.radio("Navigation Mode", ["Browse by Sector", "Search All Targets"])
 
 if search_mode == "Browse by Sector":
     selected_category = st.sidebar.selectbox("1. Select Sector", list(COMMODITIES.keys()))
     selected_commodity = st.sidebar.selectbox("2. Select Target", list(COMMODITIES[selected_category].keys()))
 else:
-    # Build a flat dictionary of all foods for the search bar
     flat_foods = {f"{food} ({cat})": (cat, food) for cat, foods in COMMODITIES.items() for food in foods.keys()}
     search_selection = st.sidebar.selectbox("🔍 Search Target", sorted(list(flat_foods.keys())))
     selected_category, selected_commodity = flat_foods[search_selection]
@@ -226,12 +236,12 @@ st.sidebar.divider()
 
 # --- AI AUTO-DISCOVER UI ---
 st.sidebar.markdown("### 🤖 AI Auto-Discover")
-st.sidebar.caption("Type any food. The AI will find financial data, or activate OSINT-Only mode if it's not traded.")
+st.sidebar.caption("Type any food. The AI will find financial data, GPS coordinates, or activate OSINT-Only mode.")
 new_food_name = st.sidebar.text_input("Enter Target (e.g., Matcha, Palm Oil)")
 
 if st.sidebar.button("Auto-Detect & Deploy"):
     if new_food_name:
-        with st.sidebar.status("AI is hunting..."):
+        with st.sidebar.status("AI is hunting for data and GPS coordinates..."):
             current_cats = list(BASE_COMMODITIES.keys())
             ai_data, status = ai_auto_discover(new_food_name, current_cats)
             
@@ -248,7 +258,9 @@ if st.sidebar.button("Auto-Detect & Deploy"):
                     "multiplier": multiplier,
                     "unit": ai_data["unit"],
                     "kg_per_unit": ai_data["kg_per_unit"],
-                    "lat": None, "lon": None 
+                    "lat": ai_data.get("lat", 0.0), 
+                    "lon": ai_data.get("lon", 0.0),
+                    "region": ai_data.get("region", "Unknown")
                 }
                 st.rerun()
             else:
@@ -257,7 +269,6 @@ if st.sidebar.button("Auto-Detect & Deploy"):
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 
-# --- FIELD MANUAL ---
 with st.expander("📖 FIELD MANUAL: System Architecture & Threat Logic", expanded=False):
     st.markdown("""
     ### 🛡️ Intelligence Architecture
@@ -342,7 +353,9 @@ else:
     with col2: st.metric(label="Master Threat Score", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
     with col3: st.empty()
 
-if weather: st.info(f"🌦️ **CLIMATE INTEL ({details['region']}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
+# --- WEATHER INTEL (Now shows for everything!) ---
+if weather and details.get("lat") != 0.0: 
+    st.info(f"🌦️ **CLIMATE INTEL ({details['region']}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
 
 # AI Brief
 st.markdown("### 🤖 AI Analyst Brief (BLUF)")
