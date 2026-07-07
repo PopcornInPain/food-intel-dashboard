@@ -18,7 +18,6 @@ st.set_page_config(page_title="Food Supply Intel", layout="wide", initial_sideba
 # --- CUSTOM CSS (CIA INTEL / GLASSMORPHIC THEME) ---
 st.markdown("""
 <style>
-    /* Sleek Metric Cards */
     div[data-testid="stMetric"] {
         background-color: rgba(18, 22, 29, 0.7);
         border: 1px solid rgba(0, 229, 255, 0.15);
@@ -27,16 +26,8 @@ st.markdown("""
         backdrop-filter: blur(10px);
         box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
-    /* Clean up headers */
-    h1, h2, h3 {
-        font-weight: 300 !important;
-        letter-spacing: 0.5px;
-    }
-    /* Subtle Expander styling */
-    .streamlit-expanderHeader {
-        background-color: rgba(18, 22, 29, 0.5) !important;
-        border-radius: 4px;
-    }
+    h1, h2, h3 { font-weight: 300 !important; letter-spacing: 0.5px; }
+    .streamlit-expanderHeader { background-color: rgba(18, 22, 29, 0.5) !important; border-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -211,6 +202,15 @@ else:
 details = COMMODITIES[selected_category][selected_commodity]
 is_osint_only = details.get("ticker") == "NONE"
 
+# --- DATA SANITIZER (Fixes the Map Crash Bug) ---
+# This ensures that even if old memory has "None" for GPS, it gets converted to 0.0 safely.
+safe_lat = details.get("lat", 0.0)
+safe_lon = details.get("lon", 0.0)
+if safe_lat is None: safe_lat = 0.0
+if safe_lon is None: safe_lon = 0.0
+details["lat"] = safe_lat
+details["lon"] = safe_lon
+
 st.sidebar.divider()
 st.sidebar.markdown("### 🚢 Macro Inputs (Logistics)")
 st.sidebar.metric("Global Fertilizer (NTR)", f"${FERT_PRICE:.2f}", f"{FERT_PCT:.2f}%")
@@ -229,18 +229,26 @@ if st.sidebar.button("Auto-Detect & Deploy"):
                 if cat not in st.session_state.custom_foods: st.session_state.custom_foods[cat] = {}
                 st.session_state.custom_foods[cat][new_food_name.title()] = {
                     "ticker": ai_data["ticker"], "search": ai_data["search"], "multiplier": 0.01 if ai_data.get("is_cents") else 1.0,
-                    "unit": ai_data["unit"], "kg_per_unit": ai_data["kg_per_unit"], "lat": ai_data.get("lat", 0.0), "lon": ai_data.get("lon", 0.0), "region": ai_data.get("region", "Unknown")
+                    "unit": ai_data["unit"], "kg_per_unit": ai_data["kg_per_unit"], 
+                    "lat": ai_data.get("lat", 0.0), "lon": ai_data.get("lon", 0.0), "region": ai_data.get("region", "Unknown")
                 }
                 st.rerun()
 
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 
-# --- HIGH-CLASS 3D WAR ROOM MAP (NETFLIX HERO BANNER) ---
+# --- BULLETPROOF 3D WAR ROOM MAP ---
 map_data = []
 for cat, foods in COMMODITIES.items():
     for name, d in foods.items():
-        if d.get("lat") != 0.0: map_data.append({"Name": name, "Lat": d["lat"], "Lon": d["lon"]})
+        # Sanitize loop data
+        l_lat = d.get("lat", 0.0)
+        l_lon = d.get("lon", 0.0)
+        if l_lat is None: l_lat = 0.0
+        if l_lon is None: l_lon = 0.0
+        
+        if l_lat != 0.0 or l_lon != 0.0: 
+            map_data.append({"Name": name, "Lat": l_lat, "Lon": l_lon})
 
 if map_data:
     df_map = pd.DataFrame(map_data)
@@ -254,24 +262,24 @@ if map_data:
     ))
     
     # Active Target (Alert Crimson Radar Ping)
-    if details.get("lat") != 0.0:
-        # Radar Halo
+    if safe_lat != 0.0 or safe_lon != 0.0:
         fig_map.add_trace(go.Scattergeo(
-            lon=[details["lon"]], lat=[details["lat"]],
+            lon=[safe_lon], lat=[safe_lat],
             mode='markers', marker=dict(size=35, color='#FF3366', opacity=0.2),
             hoverinfo='none', name="Radar"
         ))
-        # Solid Core
         fig_map.add_trace(go.Scattergeo(
-            lon=[details["lon"]], lat=[details["lat"]], text=[f"ACTIVE TARGET: {selected_commodity}"],
+            lon=[safe_lon], lat=[safe_lat], text=[f"ACTIVE TARGET: {selected_commodity}"],
             mode='markers', marker=dict(size=10, color='#FF3366', line=dict(width=2, color='#FFFFFF')),
             hoverinfo='text', name="Active Target"
         ))
     
-    # Sleek Dark Matte Globe Configuration
+    # Safe Projection Dictionary (Prevents the ValueError)
     fig_map.update_geos(
-        projection_type="orthographic",
-        projection_rotation=dict(lon=details.get("lon", 0), lat=details.get("lat", 20), roll=0), # Auto-centers on target
+        projection=dict(
+            type="orthographic",
+            rotation=dict(lon=float(safe_lon), lat=float(safe_lat), roll=0)
+        ),
         showcoastlines=True, coastcolor="#1A1E24",
         showland=True, landcolor="#12161D",
         showocean=True, oceancolor="#0B0E14",
@@ -281,7 +289,7 @@ if map_data:
     )
     
     fig_map.update_layout(
-        height=600, # Massive Hero Banner Size
+        height=600,
         margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -292,7 +300,7 @@ if map_data:
 # Fetch Data
 price_usd, price_change, trend_ma, rsi, price_history = get_financial_data(details["ticker"], details.get("multiplier", 1.0))
 avg_sentiment, news_articles = get_news_data(details["search"])
-weather = get_weather_data(details.get("lat"), details.get("lon"))
+weather = get_weather_data(safe_lat, safe_lon)
 
 price_myr = price_usd * USD_TO_MYR
 kg_per_unit = details.get("kg_per_unit", 1.0)
@@ -364,7 +372,7 @@ else:
     with col2: st.metric(label="Master Threat Score", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
     with col3: st.empty()
 
-if weather and details.get("lat") != 0.0: st.info(f"🌦️ **CLIMATE INTEL ({details['region']}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
+if weather and safe_lat != 0.0: st.info(f"🌦️ **CLIMATE INTEL ({details['region']}):** Current Temp: **{weather['temp']}°C** | 7-Day Rainfall: **{weather['rain']}mm**")
 
 # AI Brief
 st.markdown("### 🤖 AI Analyst Brief (BLUF)")
