@@ -8,11 +8,8 @@ import plotly.graph_objects as go
 from groq import Groq
 
 # --- SETUP & CONFIG ---
-# This must be the very first Streamlit command
 st.set_page_config(page_title="Food Supply Intel", layout="wide")
 
-# --- BULLETPROOF NLTK DOWNLOADER ---
-# The @st.cache_resource tells the cloud server to only do this ONCE, preventing the "infinite baking" loop.
 @st.cache_resource
 def setup_nltk():
     nltk.download('vader_lexicon', quiet=True)
@@ -20,38 +17,61 @@ def setup_nltk():
 
 sia = setup_nltk()
 
-# --- INITIALIZE AI ---
-# Safely check for the API key in Streamlit's secret vault
 try:
     api_key = st.secrets["GROQ_API_KEY"]
     groq_client = Groq(api_key=api_key)
 except Exception:
     groq_client = None
 
-# --- COMMODITY DATABASE ---
+# --- LIVE FOREX (USD to MYR) ---
+@st.cache_data(ttl=3600) # Cache for 1 hour to speed up app
+def get_myr_rate():
+    try:
+        myr_data = yf.Ticker("MYR=X").history(period="1d")
+        return myr_data['Close'].iloc[-1]
+    except:
+        return 4.70 # Fallback estimate if forex API glitches
+
+USD_TO_MYR = get_myr_rate()
+
+# --- EXPANDED COMMODITY DATABASE ---
+# Note: Grains (Wheat/Corn/Soy/Rice) are usually priced in US Cents per bushel/cwt. 
+# Sugar is US Cents/lb. Cocoa is USD/Metric Ton. 
+# We use a multiplier to normalize everything to standard USD for accurate MYR conversion.
 COMMODITIES = {
-    "Wheat": {"ticker": "ZW=F", "search_term": "wheat"},
-    "Corn": {"ticker": "ZC=F", "search_term": "corn"},
-    "Soybeans": {"ticker": "ZS=F", "search_term": "soybeans"}
+    "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel"},
+    "Rice": {"ticker": "ZR=F", "search": "rice", "multiplier": 0.01, "unit": "Hundredweight"},
+    "Cocoa": {"ticker": "CC=F", "search": "cocoa", "multiplier": 1.0, "unit": "Metric Ton"},
+    "Sugar": {"ticker": "SB=F", "search": "sugar", "multiplier": 0.01, "unit": "Pound"},
+    "Corn": {"ticker": "ZC=F", "search": "corn", "multiplier": 0.01, "unit": "Bushel"},
+    "Soybeans": {"ticker": "ZS=F", "search": "soybeans", "multiplier": 0.01, "unit": "Bushel"}
 }
 
 # --- INTELLIGENCE FUNCTIONS ---
-def get_financial_data(ticker):
+def get_financial_data(ticker, multiplier):
     try:
         data = yf.Ticker(ticker)
-        hist = data.history(period="1mo")
+        hist = data.history(period="3mo") # Pulled 3 months for better trend analysis
         
-        # Safety net: If Yahoo Finance is down or returns empty data
         if hist.empty or len(hist) < 2:
-            return 0.0, 0.0, pd.DataFrame()
+            return 0.0, 0.0, 0.0, pd.DataFrame()
             
-        today_price = hist['Close'].iloc[-1]
-        yesterday_price = hist['Close'].iloc[-2]
-        percent_change = ((today_price - yesterday_price) / yesterday_price) * 100
+        # Calculate Moving Average for better accuracy
+        hist['50_MA'] = hist['Close'].rolling(window=14).mean() 
         
-        return today_price, percent_change, hist
+        raw_today = hist['Close'].iloc[-1]
+        raw_yesterday = hist['Close'].iloc[-2]
+        
+        # Convert to actual USD
+        today_usd = raw_today * multiplier
+        yesterday_usd = raw_yesterday * multiplier
+        
+        percent_change = ((today_usd - yesterday_usd) / yesterday_usd) * 100
+        trend_50_ma = hist['50_MA'].iloc[-1] * multiplier
+        
+        return today_usd, percent_change, trend_50_ma, hist
     except Exception:
-        return 0.0, 0.0, pd.DataFrame()
+        return 0.0, 0.0, 0.0, pd.DataFrame()
 
 def get_news_data(search_term):
     try:
@@ -71,85 +91,96 @@ def get_news_data(search_term):
     except Exception:
         return 0.0, []
 
-def get_ai_brief(commodity, articles):
+def get_ai_brief(commodity, articles, price_change):
     if not groq_client:
-        return "⚠️ AI Offline: API Key missing in Streamlit Secrets. Go to Manage App -> Settings -> Secrets to add GROQ_API_KEY."
-    
+        return "⚠️ AI Offline."
     if not articles:
-        return "⚠️ No recent news articles found to analyze."
+        return "⚠️ No recent news."
         
     headlines = [art['Headline'] for art in articles[:5]]
     prompt = f"""
-    Act as a CIA intelligence analyst specializing in global food security.
-    Read these recent news headlines about {commodity}.
-    Write a 2-sentence 'BLUF' (Bottom Line Up Front) summarizing the current supply chain threat level.
-    Make it sound tactical and professional.
-    Headlines: {headlines}
+    Act as a CIA intelligence analyst for food security.
+    Target: {commodity}. Price change today: {price_change:.2f}%.
+    Read these headlines: {headlines}
+    Write a 2-sentence tactical 'BLUF' (Bottom Line Up Front) summarizing the supply chain threat. 
+    Mention if the news justifies the price movement.
     """
     
     try:
-        chat_completion = groq_client.chat.completions.create(
+        chat = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama-3.3-70b-versatile",
         )
-        return chat_completion.choices[0].message.content
+        return chat.choices[0].message.content
     except Exception as e:
         return f"AI Error: {e}"
 
 # --- DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
-st.markdown("Monitoring critical chokepoints in the global agricultural supply chain.")
+st.markdown(f"**Live Forex Rate:** 1 USD = {USD_TO_MYR:.2f} MYR")
 st.divider()
 
-# Create the tabs
-tabs = st.tabs(["🌾 Wheat", "🌽 Corn", "🌱 Soybeans"])
+# Create dynamic tabs based on our expanded database
+tab_names = [f"🎯 {name}" for name in COMMODITIES.keys()]
+tabs = st.tabs(tab_names)
 
-# Build the dashboard inside each tab
 for tab, (commodity_name, details) in zip(tabs, COMMODITIES.items()):
     with tab:
         st.header(f"Target: {commodity_name}")
         
-        # Fetch the data
-        current_price, price_change, price_history = get_financial_data(details["ticker"])
-        avg_sentiment, news_articles = get_news_data(details["search_term"])
+        price_usd, price_change, trend_ma, price_history = get_financial_data(details["ticker"], details["multiplier"])
+        avg_sentiment, news_articles = get_news_data(details["search"])
+        
+        price_myr = price_usd * USD_TO_MYR
         
         # Top Row Metrics
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric(label=f"Current Price (Per Bushel)", value=f"${current_price:.2f}", delta=f"{price_change:.2f}%")
+            st.metric(label=f"Price ({details['unit']})", 
+                      value=f"${price_usd:.2f}", 
+                      delta=f"{price_change:.2f}%")
         with col2:
-            st.metric(label="OSINT Sentiment Score", value=f"{avg_sentiment:.2f}", delta="Negative = High Threat", delta_color="inverse")
+            st.metric(label="Price in MYR", 
+                      value=f"RM {price_myr:.2f}")
         with col3:
-            threat_level = "🔴 HIGH RISK" if price_change > 1.5 or avg_sentiment < -0.2 else "🟢 NORMAL"
+            st.metric(label="OSINT Sentiment", 
+                      value=f"{avg_sentiment:.2f}", 
+                      delta="Negative = Threat", delta_color="inverse")
+        with col4:
+            threat_level = "🔴 HIGH RISK" if price_change > 2.0 or avg_sentiment < -0.25 else "🟢 NORMAL"
             st.metric(label="System Status", value=threat_level)
             
         # AI Analyst Brief
         st.markdown("### 🤖 AI Analyst Brief (BLUF)")
         with st.spinner('Decrypting intel...'):
-            ai_brief = get_ai_brief(commodity_name, news_articles)
+            ai_brief = get_ai_brief(commodity_name, news_articles, price_change)
             st.info(ai_brief)
 
         # Charts and News Layout
         col_chart, col_news = st.columns([2, 1])
         
         with col_chart:
-            st.markdown("### 📈 30-Day Price Action (FININT)")
+            st.markdown("### 📈 90-Day Price Action & Trend (FININT)")
             if not price_history.empty:
-                fig = go.Figure(data=[go.Candlestick(x=price_history.index,
-                            open=price_history['Open'], high=price_history['High'],
-                            low=price_history['Low'], close=price_history['Close'])])
-                fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
+                fig = go.Figure()
+                # Candlestick chart
+                fig.add_trace(go.Candlestick(x=price_history.index,
+                            open=price_history['Open'] * details["multiplier"], 
+                            high=price_history['High'] * details["multiplier"],
+                            low=price_history['Low'] * details["multiplier"], 
+                            close=price_history['Close'] * details["multiplier"],
+                            name="Price"))
+                # Moving Average Trendline
+                fig.add_trace(go.Scatter(x=price_history.index, y=price_history['50_MA'] * details["multiplier"], 
+                                         line=dict(color='orange', width=2), name="14-Day Trend"))
+                
+                fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False)
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("Financial data temporarily unavailable.")
 
         with col_news:
             st.markdown("### 📰 Live OSINT Chatter")
             if news_articles:
                 df = pd.DataFrame(news_articles)
                 def color_threat(val):
-                    color = '#ff4b4b' if val < 0 else '#00cc96'
-                    return f'color: {color}'
+                    return f'color: {"#ff4b4b" if val < 0 else "#00cc96"}'
                 st.dataframe(df.style.map(color_threat, subset=['Threat Score']), hide_index=True)
-            else:
-                st.warning("News data temporarily unavailable.")
