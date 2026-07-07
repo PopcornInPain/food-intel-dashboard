@@ -34,53 +34,55 @@ def get_myr_rate():
 
 USD_TO_MYR = get_myr_rate()
 
-# --- THE MASSIVE COMMODITY DATABASE ---
-# Categorized for the new Sidebar UI. You can add infinite items here.
-COMMODITIES = {
+# --- THE MASSIVE COMMODITY DATABASE (With kg conversions) ---
+# kg_per_unit calculates the exact weight so we can standardize the price to $/kg
+BASE_COMMODITIES = {
     "🌾 Grains & Cereals": {
-        "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel"},
-        "Corn": {"ticker": "ZC=F", "search": "corn", "multiplier": 0.01, "unit": "Bushel"},
-        "Soybeans": {"ticker": "ZS=F", "search": "soybeans", "multiplier": 0.01, "unit": "Bushel"},
-        "Rough Rice": {"ticker": "ZR=F", "search": "rice", "multiplier": 0.01, "unit": "Hundredweight"},
-        "Oats": {"ticker": "ZO=F", "search": "oats", "multiplier": 0.01, "unit": "Bushel"},
+        "Wheat": {"ticker": "ZW=F", "search": "wheat", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155},
+        "Corn": {"ticker": "ZC=F", "search": "corn", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 25.4012},
+        "Soybeans": {"ticker": "ZS=F", "search": "soybeans", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 27.2155},
+        "Rough Rice": {"ticker": "ZR=F", "search": "rice", "multiplier": 0.01, "unit": "Hundredweight", "kg_per_unit": 45.3592},
+        "Oats": {"ticker": "ZO=F", "search": "oats", "multiplier": 0.01, "unit": "Bushel", "kg_per_unit": 14.515},
     },
     "☕ Softs & Cash Crops": {
-        "Cocoa": {"ticker": "CC=F", "search": "cocoa", "multiplier": 1.0, "unit": "Metric Ton"},
-        "Coffee": {"ticker": "KC=F", "search": "coffee", "multiplier": 0.01, "unit": "Pound"},
-        "Sugar": {"ticker": "SB=F", "search": "sugar", "multiplier": 0.01, "unit": "Pound"},
-        "Orange Juice": {"ticker": "OJ=F", "search": "orange juice", "multiplier": 0.01, "unit": "Pound"},
+        "Cocoa": {"ticker": "CC=F", "search": "cocoa", "multiplier": 1.0, "unit": "Metric Ton", "kg_per_unit": 1000.0},
+        "Coffee": {"ticker": "KC=F", "search": "coffee", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
+        "Sugar": {"ticker": "SB=F", "search": "sugar", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
+        "Orange Juice": {"ticker": "OJ=F", "search": "orange juice", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
     },
     "🥩 Meats & Livestock": {
-        "Live Cattle (Beef)": {"ticker": "LE=F", "search": "cattle beef", "multiplier": 0.01, "unit": "Pound"},
-        "Lean Hogs (Pork)": {"ticker": "HE=F", "search": "pork hogs", "multiplier": 0.01, "unit": "Pound"},
-        "Feeder Cattle": {"ticker": "GF=F", "search": "cattle", "multiplier": 0.01, "unit": "Pound"},
+        "Live Cattle (Beef)": {"ticker": "LE=F", "search": "cattle beef", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
+        "Lean Hogs (Pork)": {"ticker": "HE=F", "search": "pork hogs", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
     },
     "🥛 Dairy & Oils": {
-        "Class III Milk": {"ticker": "DC=F", "search": "milk dairy", "multiplier": 1.0, "unit": "Hundredweight"},
-        "Soybean Oil": {"ticker": "ZL=F", "search": "soybean oil", "multiplier": 0.01, "unit": "Pound"},
+        "Class III Milk": {"ticker": "DC=F", "search": "milk dairy", "multiplier": 1.0, "unit": "Hundredweight", "kg_per_unit": 45.3592},
+        "Soybean Oil": {"ticker": "ZL=F", "search": "soybean oil", "multiplier": 0.01, "unit": "Pound", "kg_per_unit": 0.453592},
     }
 }
+
+# --- SESSION STATE FOR CUSTOM FOODS ---
+if 'custom_foods' not in st.session_state:
+    st.session_state.custom_foods = {}
+
+# Merge base commodities with custom ones
+COMMODITIES = BASE_COMMODITIES.copy()
+if st.session_state.custom_foods:
+    COMMODITIES["🛠️ Custom Added Targets"] = st.session_state.custom_foods
 
 # --- INTELLIGENCE FUNCTIONS ---
 def get_financial_data(ticker, multiplier):
     try:
         data = yf.Ticker(ticker)
         hist = data.history(period="3mo")
-        
         if hist.empty or len(hist) < 2:
             return 0.0, 0.0, 0.0, pd.DataFrame()
-            
         hist['50_MA'] = hist['Close'].rolling(window=14).mean() 
-        
         raw_today = hist['Close'].iloc[-1]
         raw_yesterday = hist['Close'].iloc[-2]
-        
         today_usd = raw_today * multiplier
         yesterday_usd = raw_yesterday * multiplier
-        
         percent_change = ((today_usd - yesterday_usd) / yesterday_usd) * 100
         trend_50_ma = hist['50_MA'].iloc[-1] * multiplier
-        
         return today_usd, percent_change, trend_50_ma, hist
     except Exception:
         return 0.0, 0.0, 0.0, pd.DataFrame()
@@ -89,15 +91,12 @@ def get_news_data(search_term):
     try:
         url = f"https://news.google.com/rss/search?q={search_term}+export+ban+OR+{search_term}+drought+OR+{search_term}+shortage+OR+{search_term}+disease&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(url)
-        
         articles = []
         total_sentiment = 0
-        
         for entry in feed.entries[:10]:
             sentiment = sia.polarity_scores(entry.title)['compound']
             total_sentiment += sentiment
             articles.append({"Headline": entry.title, "Threat Score": sentiment})
-            
         avg_sentiment = total_sentiment / 10 if feed.entries else 0
         return avg_sentiment, articles
     except Exception:
@@ -108,11 +107,9 @@ def get_ai_brief(commodity, articles, price_change):
         return "⚠️ AI Offline."
     if not articles:
         return "⚠️ No recent news."
-        
     headlines = [art['Headline'] for art in articles[:5]]
     prompt = f"""
-    Act as a CIA intelligence analyst for food security.
-    Target: {commodity}. Price change today: {price_change:.2f}%.
+    Act as a CIA intelligence analyst for food security. Target: {commodity}. Price change today: {price_change:.2f}%.
     Read these headlines: {headlines}
     Write a 2-sentence tactical 'BLUF' (Bottom Line Up Front) summarizing the supply chain threat. 
     Mention if the news justifies the price movement.
@@ -129,47 +126,58 @@ def get_ai_brief(commodity, articles, price_change):
 # --- SIDEBAR COMMAND CENTER ---
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/US_Department_of_Agriculture_seal.svg/1024px-US_Department_of_Agriculture_seal.svg.png", width=100)
 st.sidebar.title("Command Center")
-st.sidebar.markdown("Select an intelligence target below:")
 
-# Dropdowns for Category and Commodity
 selected_category = st.sidebar.selectbox("1. Select Sector", list(COMMODITIES.keys()))
 selected_commodity = st.sidebar.selectbox("2. Select Target", list(COMMODITIES[selected_category].keys()))
-
-# Get details for the selected commodity
 details = COMMODITIES[selected_category][selected_commodity]
 
 st.sidebar.divider()
-st.sidebar.info("💡 **Pro Tip:** You can add infinite commodities to the code database by finding their Yahoo Finance Ticker.")
+
+# --- NEW FEATURE: ADD CUSTOM FOOD UI ---
+st.sidebar.markdown("### ➕ Add Custom Food")
+with st.sidebar.expander("Deploy new tracking target"):
+    new_name = st.text_input("Food Name (e.g., Palm Oil)")
+    new_ticker = st.text_input("Yahoo Ticker (e.g., CPO=F)")
+    new_search = st.text_input("News Search Term (e.g., palm oil)")
+    new_unit = st.text_input("Unit Type (e.g., Metric Ton)")
+    new_kg = st.number_input("How many Kg in 1 Unit?", value=1000.0)
+    
+    # Simple logic to determine multiplier (Cents vs Dollars)
+    is_cents = st.checkbox("Is this priced in US Cents? (Check for grains/softs)")
+    new_multiplier = 0.01 if is_cents else 1.0
+
+    if st.button("Initialize Target"):
+        if new_name and new_ticker:
+            st.session_state.custom_foods[new_name] = {
+                "ticker": new_ticker, "search": new_search, 
+                "multiplier": new_multiplier, "unit": new_unit, "kg_per_unit": new_kg
+            }
+            st.rerun() # Refresh the app to show the new food
 
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
 st.markdown(f"**Live Forex Rate:** 1 USD = {USD_TO_MYR:.2f} MYR")
-
-with st.expander("📖 FIELD MANUAL: How to read this intelligence dashboard", expanded=False):
-    st.markdown("""
-    #### 🔍 How to interpret the data:
-    * **Command Center (Left):** Use the sidebar to navigate through dozens of global food sectors.
-    * **OSINT Sentiment Score:** We scrape global news for threat keywords. `-1.0` is extreme danger, `+1.0` is perfectly safe.
-    * **System Status:** Triggers **🔴 HIGH RISK** if the price jumps > 2% OR news sentiment drops below -0.25.
-    * **🤖 AI Analyst:** Cross-references news with price action for a tactical summary.
-    """)
-
-st.divider()
-
-# --- TARGET ANALYSIS ---
-st.header(f"🎯 Target Acquired: {selected_commodity}")
 
 # Fetch Data
 price_usd, price_change, trend_ma, price_history = get_financial_data(details["ticker"], details["multiplier"])
 avg_sentiment, news_articles = get_news_data(details["search"])
 price_myr = price_usd * USD_TO_MYR
 
+# --- NEW FEATURE: STANDARDIZED KG MATH ---
+# Calculate the exact price per 1 Kilogram using our database
+price_per_kg_usd = price_usd / details["kg_per_unit"] if details["kg_per_unit"] > 0 else 0
+price_per_kg_myr = price_myr / details["kg_per_unit"] if details["kg_per_unit"] > 0 else 0
+
+st.header(f"🎯 Target Acquired: {selected_commodity}")
+
 # Top Row Metrics
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric(label=f"Price ({details['unit']})", value=f"${price_usd:.2f}", delta=f"{price_change:.2f}%")
+    st.metric(label=f"Market Price ({details['unit']})", value=f"${price_usd:.2f}", delta=f"{price_change:.2f}%")
+    st.caption(f"Standardized: **${price_per_kg_usd:.4f} / kg**") # Shows standardized USD
 with col2:
     st.metric(label="Price in MYR", value=f"RM {price_myr:.2f}")
+    st.caption(f"Standardized: **RM {price_per_kg_myr:.4f} / kg**") # Shows standardized MYR
 with col3:
     st.metric(label="OSINT Sentiment", value=f"{avg_sentiment:.2f}", delta="Negative = Threat", delta_color="inverse")
 with col4:
