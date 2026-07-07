@@ -27,7 +27,22 @@ try:
 except Exception:
     groq_client = None
 
-# --- CACHED MACRO & FOREX DATA (Runs in background) ---
+# --- TELEGRAM BOT SETUP ---
+TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID", "")
+
+def send_telegram_alert(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    try:
+        requests.post(url, json=payload)
+        return True
+    except:
+        return False
+
+# --- CACHED MACRO & FOREX DATA ---
 @st.cache_data(ttl=3600)
 def get_macro_data():
     try:
@@ -112,31 +127,23 @@ def get_news_data(search_term):
     except:
         return 0.0, []
 
-# --- THE MASTER THREAT ALGORITHM ---
 def calculate_master_threat(price_pct, sentiment, rsi, fert_pct, ship_pct, weather, is_osint_only):
     score = 0
     if is_osint_only:
-        # OSINT Only: relies entirely on news sentiment
         if sentiment < -0.2: score += 50
         if sentiment < -0.5: score += 50
     else:
-        # 1. Price Action (Max 30 pts)
         if price_pct > 1.5: score += 15
         if price_pct > 3.0: score += 15
-        # 2. OSINT Chatter (Max 30 pts)
         if sentiment < -0.15: score += 15
         if sentiment < -0.40: score += 15
-        # 3. Technical RSI (Max 10 pts)
         if rsi > 70: score += 10 
-        # 4. Macro Logistics (Max 15 pts)
-        if fert_pct > 1.0: score += 7.5 # Fertilizer spike = future food spike
-        if ship_pct > 1.0: score += 7.5 # Shipping spike = supply chain jam
-        # 5. Weather / Climate (Max 15 pts)
+        if fert_pct > 1.0: score += 7.5 
+        if ship_pct > 1.0: score += 7.5 
         if weather:
-            if weather['temp'] > 32.0: score += 7.5 # Heatwave
-            if weather['rain'] < 5.0: score += 7.5 # Drought
+            if weather['temp'] > 32.0: score += 7.5 
+            if weather['rain'] < 5.0: score += 7.5 
 
-    # Determine DEFCON Level based on score
     if score >= 70: return score, "🔴 DEFCON 1 (CRITICAL)"
     if score >= 40: return score, "🟠 DEFCON 2 (ELEVATED)"
     return score, "🟢 DEFCON 3 (NORMAL)"
@@ -146,7 +153,6 @@ def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, thre
     headlines = [art['Headline'] for art in articles[:5]] if articles else ["No news."]
     weather_txt = f"Temp: {weather['temp']}C, Rain: {weather['rain']}mm" if weather else "N/A"
     
-    # The AI now sees ALL inputs
     prompt = f"""
     Act as a CIA analyst for food security. Target: {commodity}. 
     Master Threat Score: {threat_score}/100.
@@ -160,6 +166,27 @@ def get_ai_brief(commodity, articles, price_change, rsi, fert_pct, weather, thre
         return chat.choices[0].message.content
     except Exception as e:
         return f"AI Error: {e}"
+
+# --- RESTORED: AI AUTO-DISCOVER FUNCTION ---
+def ai_auto_discover(food_name, existing_categories):
+    if not groq_client: return None, "AI is offline."
+    prompt = f"""
+    Find global data for: "{food_name}". Return ONLY valid JSON.
+    {{
+        "category": "MUST be one of: {existing_categories}. Or invent a new one with emoji.",
+        "ticker": "Yahoo Finance futures ticker (e.g. CPO=F). If it DOES NOT TRADE on futures (like Matcha or Salt), return 'NONE'",
+        "search": "1 word search term for news",
+        "unit": "Trading unit (e.g. Metric Ton). If NONE, put 'Kg'",
+        "kg_per_unit": Float kg in unit. If NONE, put 1.0,
+        "is_cents": true if US Cents, false if USD. If NONE, put false
+    }}
+    """
+    try:
+        chat = groq_client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="llama-3.3-70b-versatile")
+        clean_json = chat.choices[0].message.content.replace("```json", "").replace("```", "").strip()
+        return json.loads(clean_json), "Success"
+    except:
+        return None, "Failed"
 
 # --- SIDEBAR COMMAND CENTER ---
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/US_Department_of_Agriculture_seal.svg/1024px-US_Department_of_Agriculture_seal.svg.png", width=100)
@@ -177,8 +204,67 @@ st.sidebar.markdown("### 🚢 Macro Inputs (Logistics)")
 st.sidebar.metric("Global Fertilizer (NTR)", f"${FERT_PRICE:.2f}", f"{FERT_PCT:.2f}%")
 st.sidebar.metric("Dry Bulk Shipping (BDRY)", f"${SHIP_PRICE:.2f}", f"{SHIP_PCT:.2f}%")
 
+st.sidebar.divider()
+
+# --- RESTORED: AI AUTO-DISCOVER UI ---
+st.sidebar.markdown("### 🤖 AI Auto-Discover")
+st.sidebar.caption("Type any food. The AI will find financial data, or activate OSINT-Only mode if it's not traded.")
+new_food_name = st.sidebar.text_input("Enter Target (e.g., Matcha, Palm Oil)")
+
+if st.sidebar.button("Auto-Detect & Deploy"):
+    if new_food_name:
+        with st.sidebar.status("AI is hunting..."):
+            current_cats = list(BASE_COMMODITIES.keys())
+            ai_data, status = ai_auto_discover(new_food_name, current_cats)
+            
+            if ai_data:
+                multiplier = 0.01 if ai_data.get("is_cents") else 1.0
+                cat = ai_data["category"]
+                
+                if cat not in st.session_state.custom_foods:
+                    st.session_state.custom_foods[cat] = {}
+                    
+                st.session_state.custom_foods[cat][new_food_name.title()] = {
+                    "ticker": ai_data["ticker"],
+                    "search": ai_data["search"],
+                    "multiplier": multiplier,
+                    "unit": ai_data["unit"],
+                    "kg_per_unit": ai_data["kg_per_unit"],
+                    "lat": None, "lon": None # Custom foods don't get weather yet
+                }
+                st.rerun()
+            else:
+                st.sidebar.error("AI Discovery Failed.")
+
 # --- MAIN DASHBOARD UI ---
 st.title("🌍 Global Food Supply Threat Matrix")
+
+# --- RESTORED & UPGRADED: FIELD MANUAL ---
+with st.expander("📖 FIELD MANUAL: System Architecture & Threat Logic", expanded=False):
+    st.markdown("""
+    ### 🛡️ Intelligence Architecture
+    This platform processes 6 separate streams of global data to calculate a **Master Threat Score (0-100)** for agricultural supply chains.
+
+    #### 1. The Master Threat Algorithm (How the score is calculated)
+    The system uses a weighted matrix to detect supply shocks before they happen:
+    *   **Price Action (30%):** Sudden daily spikes in the global futures market.
+    *   **OSINT Chatter (30%):** Natural Language Processing (NLP) scans global news for words like *drought, ban, shortage, strike*.
+    *   **Macro Logistics (15%):** Tracks Global Fertilizer (NTR) and Dry Bulk Shipping (BDRY). *Rule of thumb: If fertilizer spikes today, food prices spike in 6 months.*
+    *   **Climate Intel (15%):** Live weather APIs track temperature and rainfall at major global chokepoints (e.g., Mato Grosso for Soybeans).
+    *   **Technical RSI (10%):** The Relative Strength Index detects if a price spike is caused by fundamental shortages or temporary "Panic Buying" (Overbought > 70).
+
+    #### 2. DEFCON Status Levels
+    *   🟢 **DEFCON 3 (NORMAL):** Score 0-39. Standard market conditions.
+    *   🟠 **DEFCON 2 (ELEVATED):** Score 40-69. Anomalies detected in weather, news, or logistics. Monitor closely.
+    *   🔴 **DEFCON 1 (CRITICAL):** Score 70-100. Multiple indicators are flashing red. Severe supply chain disruption is imminent or occurring.
+
+    #### 3. AI Auto-Discovery & OSINT-Only Mode
+    Use the **Command Center (Left Sidebar)** to track new foods. 
+    *   If you search for a globally traded commodity (like *Palm Oil*), the AI will find its financial ticker and build a full dashboard. 
+    *   If you search for a niche item that does not trade on the stock market (like *Matcha* or *Salt*), the AI will automatically activate **OSINT-Only Mode**, disabling financial charts and tracking the threat purely through global news sentiment.
+    """)
+
+st.divider()
 
 # Fetch Data
 price_usd, price_change, trend_ma, rsi, price_history = get_financial_data(details["ticker"], details.get("multiplier", 1.0))
