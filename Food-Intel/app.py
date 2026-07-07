@@ -5,6 +5,7 @@ import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
 import pandas as pd
 import plotly.graph_objects as go
+import pydeck as pdk # NEW: The Cinematic 3D Map Engine
 from groq import Groq
 import json
 import urllib.parse
@@ -200,7 +201,6 @@ def ai_auto_discover(food_name, existing_categories):
     except: return None, "Failed"
 
 # --- SIDEBAR COMMAND CENTER ---
-# RESTORED: Original Bracket Logo
 st.sidebar.markdown("""
 <div style="text-align: center; padding: 15px; border: 1px solid rgba(0, 229, 255, 0.3); border-radius: 4px; margin-bottom: 20px; background-color: rgba(0, 229, 255, 0.05);">
     <h2 style="color: #00E5FF; margin: 0; font-size: 1.4rem; letter-spacing: 3px; font-family: 'Courier New', monospace;">[ SYS.CORE ]</h2>
@@ -223,7 +223,7 @@ else:
 details = COMMODITIES[selected_category][selected_commodity]
 is_osint_only = details.get("ticker") == "NONE"
 
-# --- BULLETPROOF DATA SANITIZER FOR MAP ---
+# --- DATA SANITIZER ---
 try:
     center_lat = float(details.get("lat", 0.0))
     if pd.isna(center_lat): center_lat = 0.0
@@ -233,9 +233,6 @@ try:
     center_lon = float(details.get("lon", 0.0))
     if pd.isna(center_lon): center_lon = 0.0
 except: center_lon = 0.0
-
-center_lat = float(max(-89.9, min(89.9, center_lat)))
-center_lon = float(max(-179.9, min(179.9, center_lon)))
 
 st.sidebar.divider()
 st.sidebar.markdown("### ⛙ MACRO LOGISTICS")
@@ -264,70 +261,72 @@ if st.sidebar.button("DEPLOY TRACKER"):
 # --- MAIN DASHBOARD UI ---
 st.title("❖ GLOBAL FOOD SUPPLY THREAT MATRIX")
 
-# --- THE IRONCLAD MAP RENDERER ---
-try:
-    map_data = []
-    for cat, foods in COMMODITIES.items():
-        for name, d in foods.items():
-            try:
-                l_lat = float(d.get("lat", 0.0))
-                l_lon = float(d.get("lon", 0.0))
-                if pd.isna(l_lat): l_lat = 0.0
-                if pd.isna(l_lon): l_lon = 0.0
-                l_lat = float(max(-89.9, min(89.9, l_lat)))
-                l_lon = float(max(-179.9, min(179.9, l_lon)))
-                if l_lat != 0.0 or l_lon != 0.0: 
-                    map_data.append({"Name": name, "Lat": l_lat, "Lon": l_lon})
-            except: pass
+# --- NEW: PYDECK WEBGL 3D MAP ENGINE (NETFLIX HERO BANNER) ---
+# PyDeck is native to Streamlit, renders cinematic 3D maps, and never crashes on coordinates.
+active_data = []
+global_data = []
 
-    if map_data:
-        df_map = pd.DataFrame(map_data)
-        fig_map = go.Figure()
-        
-        # Inactive global targets
-        fig_map.add_trace(go.Scattergeo(
-            lon=df_map['Lon'], lat=df_map['Lat'], text=df_map['Name'],
-            mode='markers', marker=dict(size=5, color='#00E5FF', opacity=0.3),
-            hoverinfo='text', name="Global Targets"
-        ))
-        
-        # Active Target
-        if center_lat != 0.0 or center_lon != 0.0:
-            fig_map.add_trace(go.Scattergeo(
-                lon=[center_lon], lat=[center_lat],
-                mode='markers', marker=dict(size=40, color='#FF3366', opacity=0.15),
-                hoverinfo='none', name="Radar"
-            ))
-            fig_map.add_trace(go.Scattergeo(
-                lon=[center_lon], lat=[center_lat], text=[f"ACTIVE TARGET: {selected_commodity}"],
-                mode='markers', marker=dict(size=8, color='#FF3366', line=dict(width=1, color='#FFFFFF')),
-                hoverinfo='text', name="Active Target"
-            ))
-        
-        fig_map.update_geos(
-            projection=dict(
-                type="orthographic",
-                rotation=dict(lon=center_lon, lat=center_lat, roll=0)
-            ),
-            showcoastlines=True, coastcolor="#1A1E24",
-            showland=True, landcolor="#12161D",
-            showocean=True, oceancolor="#0B0E14",
-            showcountries=True, countrycolor="#1A1E24",
-            showframe=False,
-            bgcolor="rgba(0,0,0,0)"
-        )
-        
-        fig_map.update_layout(
-            height=550,
-            margin=dict(l=0, r=0, t=0, b=0),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            geo_bgcolor="rgba(0,0,0,0)",
-            showlegend=False
-        )
-        st.plotly_chart(fig_map, use_container_width=True)
-except Exception as e:
-    st.error("[SYS_ERR] GEOSPATIAL RENDER ENGINE OFFLINE. AWAITING COORDINATE RECALIBRATION.")
+for cat, foods in COMMODITIES.items():
+    for name, d in foods.items():
+        try:
+            l_lat = float(d.get("lat", 0.0))
+            l_lon = float(d.get("lon", 0.0))
+            if not pd.isna(l_lat) and not pd.isna(l_lon) and (l_lat != 0.0 or l_lon != 0.0):
+                if name == selected_commodity:
+                    active_data.append({"name": name, "lat": l_lat, "lon": l_lon})
+                else:
+                    global_data.append({"name": name, "lat": l_lat, "lon": l_lon})
+        except: pass
+
+layers = []
+# Layer 1: Inactive Targets (Subtle Cyan Dots)
+if global_data:
+    layers.append(pdk.Layer(
+        "ScatterplotLayer",
+        data=pd.DataFrame(global_data),
+        get_position='[lon, lat]',
+        get_color='[0, 229, 255, 120]',
+        get_radius=150000, # 150km radius
+        pickable=True
+    ))
+
+# Layer 2: Active Target (Glowing Crimson Radar)
+if active_data:
+    # Inner Core
+    layers.append(pdk.Layer(
+        "ScatterplotLayer",
+        data=pd.DataFrame(active_data),
+        get_position='[lon, lat]',
+        get_color='[255, 51, 102, 255]',
+        get_radius=200000, 
+        pickable=True
+    ))
+    # Outer Radar Ping
+    layers.append(pdk.Layer(
+        "ScatterplotLayer",
+        data=pd.DataFrame(active_data),
+        get_position='[lon, lat]',
+        get_color='[255, 51, 102, 50]',
+        get_radius=800000, 
+        pickable=False
+    ))
+
+# Cinematic 3D Camera Angle
+view_state = pdk.ViewState(
+    latitude=center_lat if center_lat != 0.0 else 20.0,
+    longitude=center_lon if center_lon != 0.0 else 0.0,
+    zoom=2.5 if (center_lat != 0.0 or center_lon != 0.0) else 1,
+    pitch=45, # This creates the 3D angled view
+    bearing=0
+)
+
+# Render the massive WebGL Map
+st.pydeck_chart(pdk.Deck(
+    initial_view_state=view_state,
+    layers=layers,
+    tooltip={"text": "{name}"}
+), use_container_width=True)
+
 
 # Fetch Data
 price_usd, price_change, trend_ma, rsi, price_history = get_financial_data(details["ticker"], details.get("multiplier", 1.0))
@@ -404,7 +403,7 @@ else:
     with col2: st.metric(label="MASTER THREAT SCORE", value=f"{threat_score}/100", delta=threat_level, delta_color="inverse" if "DEFCON 1" in threat_level else "off")
     with col3: st.empty()
 
-if weather and center_lat != 0.0: st.info(f"⌖ CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
+if weather and center_lat != 0.0: st.info(f"[+] CLIMATE INTEL ({details.get('region', 'Unknown')}): Current Temp: {weather['temp']}°C | 7-Day Rainfall: {weather['rain']}mm")
 
 # AI Brief
 st.markdown("### ⎔ AI TACTICAL ANALYSIS")
